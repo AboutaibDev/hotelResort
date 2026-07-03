@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model activities {
+  id                Int                 @id @default(autoincrement())
+  title             String?             @db.VarChar(150)
+  description       String?             @db.Text
+  category          String?             @db.VarChar(100)
+  price             Decimal?            @db.Decimal(10, 2)
+  capacity          Int?
+  duration          Int?
+  status            activities_status?  @default(available)
+  image             String?             @db.Text
+  created_at        DateTime            @default(now()) @db.Timestamp(0)
+  updated_at        DateTime            @default(now()) @db.Timestamp(0)
+  activity_bookings activity_bookings[]
+  reviews           reviews[]
+}
+
+model activity_bookings {
+  id                 Int                       @id @default(autoincrement())
+  user_id            Int?
+  activity_id        Int?
+  booking_date       DateTime?                 @db.Date
+  participants_count Int?
+  total_price        Decimal?                  @db.Decimal(10, 2)
+  status             activity_bookings_status? @default(pending)
+  created_at         DateTime                  @default(now()) @db.Timestamp(0)
+  users              users?                    @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "activity_bookings_ibfk_1")
+  activities         activities?               @relation(fields: [activity_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "activity_bookings_ibfk_2")
+  payments           payments[]
+
+  @@index([activity_id], map: "activity_id")
+  @@index([user_id], map: "user_id")
+}
+
+model ai_messages {
+  id         Int               @id @default(autoincrement())
+  user_id    Int?
+  role       ai_messages_role?
+  message    String?           @db.Text
+  created_at DateTime          @default(now()) @db.Timestamp(0)
+  users      users?            @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ai_messages_ibfk_1")
+
+  @@index([user_id], map: "user_id")
+}
+
+model notifications {
+  id         Int      @id @default(autoincrement())
+  user_id    Int?
+  title      String?  @db.VarChar(150)
+  message    String?  @db.Text
+  type       String?  @db.VarChar(50)
+  is_read    Boolean? @default(false)
+  created_at DateTime @default(now()) @db.Timestamp(0)
+  users      users?   @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "notifications_ibfk_1")
+
+  @@index([user_id], map: "user_id")
+}
+
+model payments {
+  id                  Int                @id @default(autoincrement())
+  user_id             Int?
+  reservation_id      Int?
+  activity_booking_id Int?
+  amount              Decimal?           @db.Decimal(10, 2)
+  method              String?            @db.VarChar(50)
+  status              payments_status?   @default(pending)
+  transaction_ref     String?            @db.VarChar(150)
+  created_at          DateTime           @default(now()) @db.Timestamp(0)
+  users               users?             @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "payments_ibfk_1")
+  reservations        reservations?      @relation(fields: [reservation_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "payments_ibfk_2")
+  activity_bookings   activity_bookings? @relation(fields: [activity_booking_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "payments_ibfk_3")
+
+  @@index([activity_booking_id], map: "activity_booking_id")
+  @@index([reservation_id], map: "reservation_id")
+  @@index([user_id], map: "user_id")
+}
+
+model reservations {
+  id             Int                  @id @default(autoincrement())
+  user_id        Int?
+  room_id        Int?
+  check_in_date  DateTime?            @db.Date
+  check_out_date DateTime?            @db.Date
+  guests_count   Int?
+  total_price    Decimal?             @db.Decimal(10, 2)
+  status         reservations_status? @default(pending)
+  created_at     DateTime             @default(now()) @db.Timestamp(0)
+  updated_at     DateTime             @default(now()) @db.Timestamp(0)
+  payments       payments[]
+  users          users?               @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reservations_ibfk_1")
+  rooms          rooms?               @relation(fields: [room_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reservations_ibfk_2")
+
+  @@index([room_id], map: "room_id")
+  @@index([user_id], map: "user_id")
+}
+
+model reviews {
+  id          Int         @id @default(autoincrement())
+  user_id     Int?
+  room_id     Int?
+  activity_id Int?
+  rating      Int?
+  comment     String?     @db.Text
+  created_at  DateTime    @default(now()) @db.Timestamp(0)
+  users       users?      @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reviews_ibfk_1")
+  rooms       rooms?      @relation(fields: [room_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reviews_ibfk_2")
+  activities  activities? @relation(fields: [activity_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "reviews_ibfk_3")
+
+  @@index([activity_id], map: "activity_id")
+  @@index([room_id], map: "room_id")
+  @@index([user_id], map: "user_id")
+}
+
+model rooms {
+  id              Int            @id @default(autoincrement())
+  title           String?        @db.VarChar(150)
+  description     String?        @db.Text
+  price_per_night Decimal?       @db.Decimal(10, 2)
+  capacity        Int?
+  status          rooms_status?  @default(available)
+  image           String?        @db.Text
+  created_at      DateTime       @default(now()) @db.Timestamp(0)
+  updated_at      DateTime       @default(now()) @db.Timestamp(0)
+  reservations    reservations[]
+  reviews         reviews[]
+}
+
+model support_tickets {
+  id           Int                       @id @default(autoincrement())
+  user_id      Int?
+  subject      String?                   @db.VarChar(150)
+  message      String?                   @db.Text
+  admin_answer String?                   @db.Text
+  status       support_tickets_status?   @default(open)
+  priority     support_tickets_priority? @default(medium)
+  created_at   DateTime                  @default(now()) @db.Timestamp(0)
+  updated_at   DateTime                  @default(now()) @db.Timestamp(0)
+  users        users?                    @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "support_tickets_ibfk_1")
+
+  @@index([user_id], map: "user_id")
+}
+
+model users {
+  id                Int                 @id @default(autoincrement())
+  first_name        String?             @db.VarChar(100)
+  last_name         String?             @db.VarChar(100)
+  email             String?             @unique(map: "email") @db.VarChar(150)
+  password          String?             @db.VarChar(255)
+  phone             String?             @db.VarChar(20)
+  role              users_role?         @default(customer)
+  created_at        DateTime            @default(now()) @db.Timestamp(0)
+  updated_at        DateTime            @default(now()) @db.Timestamp(0)
+  activity_bookings activity_bookings[]
+  ai_messages       ai_messages[]
+  notifications     notifications[]
+  payments          payments[]
+  reservations      reservations[]
+  reviews           reviews[]
+  support_tickets   support_tickets[]
+}
+
+
+
+
+enum ai_messages_role {
+  user
+  ai
+}
+
+enum support_tickets_status {
+  open
+  in_progress
+  closed
+}
+
+enum rooms_status {
+  available
+  unavailable
+}
+
+enum support_tickets_priority {
+  low
+  medium
+  high
+}
+
+enum activity_bookings_status {
+  pending
+  confirmed
+  cancelled
+}
+
+enum payments_status {
+  success
+  failed
+  pending
+}
+
+enum users_role {
+  customer
+  admin
+}
+
+enum activities_status {
+  available
+  unavailable
+}
+
+enum reservations_status {
+  pending
+  confirmed
+  cancelled
+}

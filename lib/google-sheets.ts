@@ -1,0 +1,278 @@
+import { google } from "googleapis";
+
+// Extract spreadsheet ID from URL
+const SPREADSHEET_ID = "1R5JtrLjY7ogyz58jMakeHwekUEg66q1gk6iMDkoWXNw";
+
+// Tab names (using environment variables)
+export const TAB_NAMES = {
+  entertainment: process.env.GOOGLE_SHEET_ENTERTAINMENT_TAB || "Entertainment",
+  menu: process.env.GOOGLE_SHEET_MENU_TAB || "Menu",
+  requests: process.env.GOOGLE_SHEET_REQUESTS_TAB || "Requests",
+};
+
+// Helper to get Google Sheets client (for write operations)
+async function getAuthenticatedSheetsClient() {
+  // Safely handle private key with proper newline parsing
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY
+    ? process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n").replace(/"/g, "")
+    : "";
+
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      private_key: privateKey,
+    },
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+
+  const sheets = google.sheets({ version: "v4", auth });
+  return sheets;
+}
+
+// Helper to get Google Sheets client for read-only (can use API key)
+async function getReadOnlySheetsClient() {
+  // If API key is available, use that for simpler read access
+  if (process.env.GOOGLE_API_KEY) {
+    return google.sheets({ version: "v4", auth: process.env.GOOGLE_API_KEY });
+  }
+  
+  // Fall back to service account if available
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+    return getAuthenticatedSheetsClient();
+  }
+
+  throw new Error("No Google Sheets credentials available for read access");
+}
+
+// Helper to parse Google Sheets date (YYYY/MM/DD) to a valid Date
+function parseGoogleSheetDate(dateStr: string): string {
+  if (!dateStr) return "";
+  // Try to parse YYYY/MM/DD format
+  const parts = dateStr.split(/[\/\-]/);
+  if (parts.length === 3) {
+    let year = parseInt(parts[0]);
+    let month = parseInt(parts[1]) - 1; // months are 0-indexed in JS
+    let day = parseInt(parts[2]);
+    
+    // If first part is 2 digits, assume it's day or month (swap if needed)
+    if (year < 100) {
+      year = 2000 + year;
+    }
+    
+    const date = new Date(year, month, day);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  }
+  // Fallback to original string
+  return dateStr;
+}
+
+// Read all rows from a specific tab
+export async function readSheetRows(tabName: string) {
+  try {
+    const sheets = await getReadOnlySheetsClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${tabName}!A:Z`,
+    });
+
+    const rows = response.data.values || [];
+    if (rows.length < 2) return [];
+
+    const headers = rows[0];
+    let validRowIndex = 0;
+    return rows.slice(1).filter(row => {
+      // Skip empty or almost empty rows
+      const trimmedRow = row.map(cell => (cell || "").trim());
+      const hasImportantData = trimmedRow.some(cell => 
+        cell.length > 1 && cell !== "." && cell !== "-"
+      );
+      return hasImportantData;
+    }).map((row) => {
+      validRowIndex++;
+      const obj: any = { id: validRowIndex };
+      
+      headers.forEach((header, i) => {
+        const value = row[i] || "";
+        // Normalize header name to match what UI expects
+        let normalizedHeader = header.toLowerCase();
+        
+        // Map to exact field names
+        if (normalizedHeader === "date") obj.date = parseGoogleSheetDate(value);
+        else if (normalizedHeader === "activity") obj.activity = value;
+        else if (normalizedHeader === "time") obj.time = value;
+        else if (normalizedHeader === "description") obj.description = value;
+        else if (normalizedHeader === "registration") obj.registration = value;
+        else if (normalizedHeader === "meal") obj.meal = value;
+        else if (normalizedHeader === "title") obj.title = value;
+        else if (normalizedHeader === "id") obj.guest_id = value;
+        else if (normalizedHeader === "request type" || normalizedHeader === "request_type") obj.request_type = value;
+        else if (normalizedHeader === "status") obj.status = value;
+        else {
+          // Keep original header as fallback
+          obj[header] = value;
+        }
+      });
+      
+      return obj;
+    });
+  } catch (error) {
+    console.error("Error reading Google Sheet:", error);
+    return [];
+  }
+}
+
+// Helper to get all rows with their actual positions in the sheet
+async function getRowsWithPositions(tabName: string) {
+  const sheets = await getAuthenticatedSheetsClient();
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${tabName}!A:Z`,
+  });
+
+  const allRows = response.data.values || [];
+  if (allRows.length < 2) {
+    return { headers: [], validRows: [], allRows: [] };
+  }
+
+  const headers = allRows[0];
+  const validRows = [];
+
+  for (let i = 1; i < allRows.length; i++) {
+    const row = allRows[i];
+    const trimmedRow = row.map(cell => (cell || "").trim());
+    const hasImportantData = trimmedRow.some(cell => 
+      cell.length > 1 && cell !== "." && cell !== "-"
+    );
+    if (hasImportantData) {
+      validRows.push({
+        data: row,
+        sheetRowIndex: i // actual row index in the sheet (0-based, headers at 0)
+      });
+    }
+  }
+
+  return { headers, validRows, allRows };
+}
+
+// Write/update a row in a tab
+export async function writeSheetRow(tabName: string, rowIndex: number | null, data: any) {
+  try {
+    if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      throw new Error("Google Sheets service account credentials required for write operations");
+    }
+    const sheets = await getAuthenticatedSheetsClient();
+    const { headers, validRows, allRows } = await getRowsWithPositions(tabName);
+
+    // Map UI field names back to original header names
+    const headerFieldMap: any = {};
+    headers.forEach(header => {
+      let normalizedHeader = header.toLowerCase();
+      if (normalizedHeader === "date") headerFieldMap["date"] = header;
+      else if (normalizedHeader === "activity") headerFieldMap["activity"] = header;
+      else if (normalizedHeader === "time") headerFieldMap["time"] = header;
+      else if (normalizedHeader === "description") headerFieldMap["description"] = header;
+      else if (normalizedHeader === "registration") headerFieldMap["registration"] = header;
+      else if (normalizedHeader === "meal") headerFieldMap["meal"] = header;
+      else if (normalizedHeader === "title") headerFieldMap["title"] = header;
+      else if (normalizedHeader === "id") headerFieldMap["guest_id"] = header;
+      else if (normalizedHeader === "request type" || normalizedHeader === "request_type") headerFieldMap["request_type"] = header;
+      else if (normalizedHeader === "status") headerFieldMap["status"] = header;
+      else headerFieldMap[header] = header;
+    });
+
+    // Prepare new row data in order of headers
+    const newRow = headers.map((header) => {
+      // Find matching field in data (check both original header and mapped name)
+      let value = data[header] || "";
+      // Check mapped fields
+      if (!value) {
+        const mappedField = Object.keys(headerFieldMap).find(key => headerFieldMap[key] === header);
+        if (mappedField) {
+          value = data[mappedField] || "";
+        }
+      }
+      // If still no value, check if we have a field with different case
+      if (!value) {
+        for (const key of Object.keys(data)) {
+          if (key.toLowerCase() === header.toLowerCase()) {
+            value = data[key];
+            break;
+          }
+        }
+      }
+      return value || "";
+    });
+
+    let range: string;
+    if (rowIndex === null) {
+      // Append new row
+      range = `${tabName}!A${allRows.length + 1}`;
+    } else {
+      // Find actual sheet row index from valid row index (rowIndex starts at 1)
+      const targetRow = validRows[rowIndex - 1];
+      if (!targetRow) throw new Error("Row not found");
+      range = `${tabName}!A${targetRow.sheetRowIndex + 1}`; // +1 because sheet rows are 1-indexed
+    }
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: range,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [newRow],
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error writing to Google Sheet:", error);
+    throw error;
+  }
+}
+
+// Delete a row from a tab
+export async function deleteSheetRow(tabName: string, rowIndex: number) {
+  try {
+    if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      throw new Error("Google Sheets service account credentials required for delete operations");
+    }
+    const sheets = await getAuthenticatedSheetsClient();
+    
+    // Get sheet metadata to find sheet ID
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId: SPREADSHEET_ID,
+    });
+    const sheet = spreadsheet.data.sheets?.find((s) => s.properties?.title === tabName);
+    if (!sheet?.properties?.sheetId) throw new Error("Sheet not found");
+
+    // Get actual sheet row index
+    const { validRows } = await getRowsWithPositions(tabName);
+    const targetRow = validRows[rowIndex - 1];
+    if (!targetRow) throw new Error("Row not found");
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheet.properties.sheetId,
+                dimension: "ROWS",
+                startIndex: targetRow.sheetRowIndex, // actual row index in sheet
+                endIndex: targetRow.sheetRowIndex + 1,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting from Google Sheet:", error);
+    throw error;
+  }
+}
