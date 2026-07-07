@@ -7,7 +7,10 @@ export const revalidate = 0;
 export default async function RoomsPage() {
   
   const dbRooms = await db.rooms.findMany({
-    orderBy: { price_per_night: "asc" },
+    orderBy: [
+      { status: "asc" },
+      { price_per_night: "asc" },
+    ],
   });
 
   const rooms = dbRooms.map((r: any) => ({

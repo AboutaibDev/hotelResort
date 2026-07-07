@@ -4,9 +4,9 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { parseImages, stringifyImages } from "@/lib/images";
 import {
-  Users, Compass, Calendar, Ticket, Plus, Save, MessageSquare, Trash2,
-  Lock, ChevronRight, TrendingUp, CircleDollarSign, AlertCircle, AlertTriangle,
-  X, Check, HelpCircle, Loader2, ArrowRight, Shield, RefreshCw, Search, Filter, Play,
+  Users, Compass, Calendar, Ticket, Plus, Trash2,
+  ChevronRight, TrendingUp, CircleDollarSign, AlertCircle, AlertTriangle,
+  X, Check, HelpCircle, Loader2, Search,
   Utensils, ClipboardList, Music, ChevronLeft
 } from "lucide-react";
 import ModalOverlay from "@/components/ModalOverlay";
@@ -221,6 +221,22 @@ export default function AdminPortal({
   const [scheduleForm, setScheduleForm] = useState(emptyScheduleForm);
   const [menuForm, setMenuForm] = useState(emptyMenuForm);
   const [requestForm, setRequestForm] = useState(emptyRequestForm);
+
+  // Customer search state for request modal
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const filteredCustomers = users.filter((u) => {
+    if (!customerSearchQuery.trim()) return true;
+    const q = customerSearchQuery.toLowerCase();
+    return (
+      u.first_name?.toLowerCase().includes(q) ||
+      u.last_name?.toLowerCase().includes(q) ||
+      `${u.first_name || ""} ${u.last_name || ""}`.toLowerCase().includes(q) ||
+      u.email?.toLowerCase().includes(q) ||
+      u.phone?.toLowerCase().includes(q) ||
+      u.id.toString().includes(q)
+    );
+  });
 
   // Sync state with props on server updates
   useEffect(() => {
@@ -518,6 +534,7 @@ export default function AdminPortal({
       try {
         const res = await fetch(`/api/admin/schedule?id=${id}`, { method: "DELETE" });
         if (res.ok) { router.refresh(); showAlert("Deleted.", "Success"); }
+        else { const d = await res.json(); showAlert(d.error || "Delete failed.", "Error"); }
       } catch { showAlert("Error deleting.", "Error"); } finally { setLoading(false); }
     });
   };
@@ -541,21 +558,52 @@ export default function AdminPortal({
       try {
         const res = await fetch(`/api/admin/menu?id=${id}`, { method: "DELETE" });
         if (res.ok) { router.refresh(); showAlert("Deleted.", "Success"); }
+        else { const d = await res.json(); showAlert(d.error || "Delete failed.", "Error"); }
       } catch { showAlert("Error deleting.", "Error"); } finally { setLoading(false); }
     });
   };
 
   const handleSaveRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    try {
-      const isNew = !requestModal.item;
-      const method = isNew ? "POST" : "PUT";
-      const body = isNew ? requestForm : { id: requestModal.item!.id, ...requestForm };
-      const res = await fetch("/api/admin/requests", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) { setRequestModal({ open: false, item: null }); router.refresh(); showAlert("Request saved!", "Success"); }
-      else { const d = await res.json(); showAlert(d.error || "Save failed.", "Error"); }
-    } catch { showAlert("Error saving.", "Error"); } finally { setLoading(false); }
+    if (!requestModal.item) {
+      // Creating a new request
+      setLoading(true);
+      try {
+        const res = await fetch("/api/admin/requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestForm) });
+        if (res.ok) { setRequestModal({ open: false, item: null }); router.refresh(); showAlert("Request saved!", "Success"); }
+        else { const d = await res.json(); showAlert(d.error || "Save failed.", "Error"); }
+      } catch { showAlert("Error saving.", "Error"); } finally { setLoading(false); }
+      return;
+    }
+
+    // Editing an existing request
+    const wasPending = requestModal.item.status.toLowerCase() !== "confirmed";
+    const isNowConfirmed = requestForm.status.toLowerCase() === "confirmed";
+
+    if (wasPending && isNowConfirmed) {
+      // Show confirmation that the user will be notified
+      showConfirm(
+        `This request will be marked as "Confirmed" and the customer (Guest ID: ${requestForm.guest_id || "N/A"}) will be notified. Continue?`,
+        async () => {
+          setLoading(true);
+          try {
+            const body = { id: requestModal.item!.id, ...requestForm, notifyUser: true };
+            const res = await fetch("/api/admin/requests", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            if (res.ok) { setRequestModal({ open: false, item: null }); router.refresh(); showAlert("Request confirmed and customer has been notified.", "Success"); }
+            else { const d = await res.json(); showAlert(d.error || "Save failed.", "Error"); }
+          } catch { showAlert("Error saving.", "Error"); } finally { setLoading(false); }
+        },
+        "Confirm Request"
+      );
+    } else {
+      setLoading(true);
+      try {
+        const body = { id: requestModal.item!.id, ...requestForm };
+        const res = await fetch("/api/admin/requests", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        if (res.ok) { setRequestModal({ open: false, item: null }); router.refresh(); showAlert("Request saved!", "Success"); }
+        else { const d = await res.json(); showAlert(d.error || "Save failed.", "Error"); }
+      } catch { showAlert("Error saving.", "Error"); } finally { setLoading(false); }
+    }
   };
 
   const handleDeleteRequest = (id: number) => {
@@ -564,6 +612,7 @@ export default function AdminPortal({
       try {
         const res = await fetch(`/api/admin/requests?id=${id}`, { method: "DELETE" });
         if (res.ok) { router.refresh(); showAlert("Deleted.", "Success"); }
+        else { const d = await res.json(); showAlert(d.error || "Delete failed.", "Error"); }
       } catch { showAlert("Error deleting.", "Error"); } finally { setLoading(false); }
     });
   };
@@ -781,21 +830,33 @@ export default function AdminPortal({
             <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col gap-6">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-lg font-serif font-bold text-slate-900">Manage Rooms</h3>
-                <button
-                  onClick={() => handleOpenEdit("room", null)}
-                  className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Add Room</span>
-                </button>
+              <button
+                onClick={() => handleOpenEdit("room", null)}
+                className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Room</span>
+              </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {rooms.map((room) => (
-                  <div key={room.id} className="flex gap-4 p-4 border border-slate-200/60 rounded-2xl hover:border-slate-300 transition-colors">
+                {rooms
+                  .slice()
+                  .sort((a, b) => {
+                    const aAvailable = a.status === "available" ? 0 : 1;
+                    const bAvailable = b.status === "available" ? 0 : 1;
+                    return aAvailable - bAvailable;
+                  })
+                  .map((room) => (
+                  <div key={room.id} className={`flex gap-4 p-4 border rounded-2xl transition-colors ${room.status === "available" ? "border-slate-200/60 hover:border-slate-300" : "border-rose-200/60 bg-rose-50/30"}`}>
                     <div className="h-24 w-32 bg-stone-100 rounded-xl overflow-hidden shrink-0 relative">
                       {room.image && (
                         <img src={parseImages(room.image, "room")[0]} alt={room.title || ""} className="object-cover h-full w-full" />
+                      )}
+                      {room.status !== "available" && (
+                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                          <span className="text-[10px] uppercase font-bold text-white bg-rose-600 px-2 py-1 rounded-full">Unavailable</span>
+                        </div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
@@ -804,6 +865,9 @@ export default function AdminPortal({
                         <p className="text-xs text-slate-500 font-medium mt-1">
                           {room.price_per_night} DH / night • Capacity: {room.capacity}
                         </p>
+                        {room.status !== "available" && (
+                          <span className="text-[9px] uppercase font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full mt-1 inline-block">Unavailable</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-2">
                         <button
@@ -829,21 +893,33 @@ export default function AdminPortal({
             <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col gap-6">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <h3 className="text-lg font-serif font-bold text-slate-900">Manage Activities</h3>
-                <button
-                  onClick={() => handleOpenEdit("activity", null)}
-                  className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Add Activity</span>
-                </button>
+              <button
+                onClick={() => handleOpenEdit("activity", null)}
+                className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Activity</span>
+              </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {activities.map((act) => (
-                  <div key={act.id} className="flex gap-4 p-4 border border-slate-200/60 rounded-2xl hover:border-slate-300 transition-colors">
+                {activities
+                  .slice()
+                  .sort((a, b) => {
+                    const aAvailable = a.status === "available" ? 0 : 1;
+                    const bAvailable = b.status === "available" ? 0 : 1;
+                    return aAvailable - bAvailable;
+                  })
+                  .map((act) => (
+                  <div key={act.id} className={`flex gap-4 p-4 border rounded-2xl transition-colors ${act.status === "available" ? "border-slate-200/60 hover:border-slate-300" : "border-rose-200/60 bg-rose-50/30"}`}>
                     <div className="h-24 w-32 bg-stone-100 rounded-xl overflow-hidden shrink-0 relative">
                       {act.image && (
                         <img src={parseImages(act.image, "activity")[0]} alt={act.title || ""} className="object-cover h-full w-full" />
+                      )}
+                      {act.status !== "available" && (
+                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                          <span className="text-[10px] uppercase font-bold text-white bg-rose-600 px-2 py-1 rounded-full">Unavailable</span>
+                        </div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
@@ -852,6 +928,9 @@ export default function AdminPortal({
                         <p className="text-xs text-slate-500 font-medium mt-1">
                           {act.price} DH / person • {act.category}
                         </p>
+                        {act.status !== "available" && (
+                          <span className="text-[9px] uppercase font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full mt-1 inline-block">Unavailable</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-2">
                         <button
@@ -1120,77 +1199,107 @@ export default function AdminPortal({
                   {tickets.length === 0 ? "No support tickets currently filed." : "No tickets match your filters."}
                 </p>
               ) : (
-                filteredTickets.slice((ticketsPage - 1) * ADMIN_PAGE_SIZE, ticketsPage * ADMIN_PAGE_SIZE).map((t) => (
-                  <div key={t.id} className="p-5 rounded-2xl border border-slate-200/80 bg-stone-50/40 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex-1 min-w-0 flex flex-col gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${
-                          t.status === "open"
-                            ? "bg-rose-500/10 border-rose-500/20 text-rose-600"
-                            : t.status === "in_progress"
-                            ? "bg-blue-500/10 border-blue-500/20 text-blue-600"
-                            : "bg-slate-500/10 border-slate-500/20 text-slate-550"
-                        }`}>
-                          {t.status}
-                        </span>
-                        <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded ${
-                          t.priority === "high" ? "bg-rose-50 text-rose-650" : t.priority === "medium" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"
-                        }`}>
-                          {t.priority} Priority
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {new Date(t.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      
-                      <h4 className="font-bold text-slate-900 text-sm">{t.subject}</h4>
-                      <p className="text-xs text-slate-500 leading-relaxed font-normal whitespace-pre-wrap">{t.message}</p>
-                      
-                      {t.admin_answer && (
-                        <div className="mt-2 bg-white p-3 rounded-xl border border-primary/20 text-xs text-slate-700">
-                          <span className="font-bold text-primary">Your Reply: </span>
-                          {t.admin_answer}
+                (() => {
+                  const getDateStr = (d: string | Date): string => {
+                    const date = new Date(d);
+                    const y = date.getFullYear();
+                    const m = String(date.getMonth() + 1).padStart(2, "0");
+                    const day = String(date.getDate()).padStart(2, "0");
+                    return `${y}-${m}-${day}`;
+                  };
+
+                  // Separate into active (open/in_progress) and closed
+                  const active = filteredTickets.filter((t) => t.status !== "closed");
+                  const closed = filteredTickets.filter((t) => t.status === "closed");
+
+                  // Sort active: open first, then in_progress, then by closest date ascending
+                  active.sort((a, b) => {
+                    const aOpen = a.status === "open" ? 0 : 1;
+                    const bOpen = b.status === "open" ? 0 : 1;
+                    if (aOpen !== bOpen) return aOpen - bOpen;
+                    return getDateStr(a.created_at).localeCompare(getDateStr(b.created_at));
+                  });
+
+                  // Sort closed: by date descending (most recent closed first)
+                  closed.sort((a, b) => getDateStr(b.created_at).localeCompare(getDateStr(a.created_at)));
+
+                  const sortedTickets = [...active, ...closed];
+                  const paginated = sortedTickets.slice((ticketsPage - 1) * ADMIN_PAGE_SIZE, ticketsPage * ADMIN_PAGE_SIZE);
+
+                  return paginated.map((t) => {
+                    return (
+                      <div key={t.id} className="p-5 rounded-2xl border border-slate-200/80 bg-stone-50/40 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="flex-1 min-w-0 flex flex-col gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border ${
+                              t.status === "open"
+                                ? "bg-rose-500/10 border-rose-500/20 text-rose-600"
+                                : t.status === "in_progress"
+                                ? "bg-blue-500/10 border-blue-500/20 text-blue-600"
+                                : "bg-slate-500/10 border-slate-500/20 text-slate-550"
+                            }`}>
+                              {t.status}
+                            </span>
+                            <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded ${
+                              t.priority === "high" ? "bg-rose-50 text-rose-650" : t.priority === "medium" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"
+                            }`}>
+                              {t.priority} Priority
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {new Date(t.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          
+                          <h4 className="font-bold text-slate-900 text-sm">{t.subject}</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed font-normal whitespace-pre-wrap">{t.message}</p>
+                          
+                          {t.admin_answer && (
+                            <div className="mt-2 bg-white p-3 rounded-xl border border-primary/20 text-xs text-slate-700">
+                              <span className="font-bold text-primary">Your Reply: </span>
+                              {t.admin_answer}
+                            </div>
+                          )}
+
+                          <div className="text-[10px] text-slate-400 font-medium mt-1">
+                            From: {t.users?.first_name} {t.users?.last_name} ({t.users?.email})
+                          </div>
                         </div>
-                      )}
 
-                      <div className="text-[10px] text-slate-400 font-medium mt-1">
-                        From: {t.users?.first_name} {t.users?.last_name} ({t.users?.email})
+                        <div className="flex flex-wrap md:flex-col items-stretch gap-2 shrink-0 w-full md:w-36">
+                          {t.status !== "open" && (
+                            <button
+                              onClick={() => handleUpdateTicketStatus(t.id, "open")}
+                              className="bg-white hover:bg-stone-100 border border-slate-200/80 text-slate-700 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer text-center"
+                            >
+                              Mark Open
+                            </button>
+                          )}
+                          
+                          {t.status !== "in_progress" && (
+                            <button
+                              onClick={() => handleUpdateTicketStatus(t.id, "in_progress")}
+                              className="bg-white hover:bg-stone-100 border border-slate-200/80 text-slate-700 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer text-center"
+                            >
+                              Mark In Progress
+                            </button>
+                          )}
+
+                          {t.status !== "closed" && (
+                            <button
+                              onClick={() => {
+                                setTicketToClose(t);
+                                setCloseReply(t.admin_answer || "");
+                              }}
+                              className="bg-primary hover:bg-amber-400 text-slate-950 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer text-center shadow-sm"
+                            >
+                              Close & Reply
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex flex-wrap md:flex-col items-stretch gap-2 shrink-0 w-full md:w-36">
-                      {t.status !== "open" && (
-                        <button
-                          onClick={() => handleUpdateTicketStatus(t.id, "open")}
-                          className="bg-white hover:bg-stone-100 border border-slate-200/80 text-slate-700 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer text-center"
-                        >
-                          Mark Open
-                        </button>
-                      )}
-                      
-                      {t.status !== "in_progress" && (
-                        <button
-                          onClick={() => handleUpdateTicketStatus(t.id, "in_progress")}
-                          className="bg-white hover:bg-stone-100 border border-slate-200/80 text-slate-700 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer text-center"
-                        >
-                          Mark In Progress
-                        </button>
-                      )}
-
-                      {t.status !== "closed" && (
-                        <button
-                          onClick={() => {
-                            setTicketToClose(t);
-                            setCloseReply(t.admin_answer || "");
-                          }}
-                          className="bg-primary hover:bg-amber-400 text-slate-950 text-xs font-bold py-2 rounded-xl transition-all cursor-pointer text-center shadow-sm"
-                        >
-                          Close &amp; Reply
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))
+                    );
+                  });
+                })()
               )}
               <AdminPagination page={ticketsPage} total={filteredTickets.length} onChange={setTicketsPage} />
             </div>
@@ -1397,26 +1506,72 @@ export default function AdminPortal({
                 <tbody>
                   {requestList.length === 0 ? (
                     <tr><td colSpan={5} className="py-8 text-center text-xs text-slate-400 italic">No special requests recorded.</td></tr>
-                  ) : requestList.slice((requestsPage - 1) * ADMIN_PAGE_SIZE, requestsPage * ADMIN_PAGE_SIZE).map((row) => (
-                    <tr key={row.id} className="border-b border-slate-100 hover:bg-stone-50/40">
-                      <td className="py-3 px-2 text-xs text-slate-500 font-mono">{row.guest_id ?? "—"}</td>
-                      <td className="py-3 px-2 text-xs text-slate-600">{new Date(row.date).toLocaleDateString()}</td>
-                      <td className="py-3 px-2 font-semibold text-slate-800">{row.request_type}</td>
-                      <td className="py-3 px-2">
-                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-                          row.status.toLowerCase() === "confirmed"
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
-                            : "bg-amber-500/10 border-amber-500/20 text-amber-700"
-                        }`}>{row.status}</span>
-                      </td>
-                      <td className="py-3 px-2 text-right">
-                        <div className="flex justify-end gap-3">
-                          <button onClick={() => { setRequestForm({ guest_id: row.guest_id?.toString() || "", date: new Date(row.date).toISOString().split("T")[0], request_type: row.request_type, status: row.status }); setRequestModal({ open: true, item: row }); }} className="text-xs font-bold text-primary hover:underline cursor-pointer">Edit</button>
-                          <button onClick={() => handleDeleteRequest(row.id)} className="text-xs font-bold text-rose-500 hover:underline cursor-pointer">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  ) : (
+                    (() => {
+                      // Get today's date components in local time
+                      const now = new Date();
+                      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+                      // Helper: get a comparable YYYY-MM-DD string from row.date
+                      const getDateStr = (d: string | Date): string => {
+                        const date = new Date(d);
+                        const y = date.getFullYear();
+                        const m = String(date.getMonth() + 1).padStart(2, "0");
+                        const day = String(date.getDate()).padStart(2, "0");
+                        return `${y}-${m}-${day}`;
+                      };
+
+                      // Separate into upcoming (today or future) and past
+                      const upcoming = requestList.filter((r) => {
+                        return getDateStr(r.date) >= todayStr;
+                      });
+                      const past = requestList.filter((r) => {
+                        return getDateStr(r.date) < todayStr;
+                      });
+
+                      // Sort upcoming: pending first, then by closest date ascending
+                      upcoming.sort((a, b) => {
+                        const aPending = a.status.toLowerCase() === "pending" ? 0 : 1;
+                        const bPending = b.status.toLowerCase() === "pending" ? 0 : 1;
+                        if (aPending !== bPending) return aPending - bPending;
+                        return getDateStr(a.date).localeCompare(getDateStr(b.date));
+                      });
+
+                      // Sort past: by date descending (most recent past first)
+                      past.sort((a, b) => getDateStr(b.date).localeCompare(getDateStr(a.date)));
+
+                      const sortedRequests = [...upcoming, ...past];
+                      const paginated = sortedRequests.slice((requestsPage - 1) * ADMIN_PAGE_SIZE, requestsPage * ADMIN_PAGE_SIZE);
+
+                      return paginated.map((row) => {
+                        const isPast = getDateStr(row.date) < todayStr;
+
+                        return (
+                          <tr key={row.id} className={`border-b border-slate-100 transition-colors ${isPast ? "opacity-40 bg-slate-50" : "hover:bg-stone-50/40"}`}>
+                            <td className="py-3 px-2 text-xs text-slate-500 font-mono">{row.guest_id ?? "—"}</td>
+                            <td className="py-3 px-2 text-xs text-slate-600">
+                              {new Date(row.date).toLocaleDateString()}
+                              {isPast && <span className="ml-2 text-[9px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">Past</span>}
+                            </td>
+                            <td className="py-3 px-2 font-semibold text-slate-800">{row.request_type}</td>
+                            <td className="py-3 px-2">
+                              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                row.status.toLowerCase() === "confirmed"
+                                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
+                                  : "bg-amber-500/10 border-amber-500/20 text-amber-700"
+                              }`}>{row.status}</span>
+                            </td>
+                            <td className="py-3 px-2 text-right">
+                              <div className="flex justify-end gap-3">
+                                <button onClick={() => { setRequestForm({ guest_id: row.guest_id?.toString() || "", date: new Date(row.date).toISOString().split("T")[0], request_type: row.request_type, status: row.status }); setRequestModal({ open: true, item: row }); }} className="text-xs font-bold text-primary hover:underline cursor-pointer">Edit</button>
+                                <button onClick={() => handleDeleteRequest(row.id)} className="text-xs font-bold text-rose-500 hover:underline cursor-pointer">Delete</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1556,9 +1711,11 @@ export default function AdminPortal({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-primary hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition-colors shadow"
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-primary hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition-colors shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Submit & Close Ticket
+                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <span>Submit & Close Ticket</span>
                 </button>
               </div>
             </form>
@@ -1666,9 +1823,55 @@ export default function AdminPortal({
             </div>
             <form onSubmit={handleSaveRequest} className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer ID (optional)</label>
-                  <input type="number" value={requestForm.guest_id} onChange={(e) => setRequestForm({ ...requestForm, guest_id: e.target.value })} placeholder="e.g. 42" className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" />
+                <div className="flex flex-col gap-1.5 relative">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer</label>
+                  {requestModal.item ? (
+                    <div className="px-4 py-2.5 bg-stone-100 border border-slate-200 rounded-xl text-sm text-slate-500 font-mono">
+                      {requestForm.guest_id || "—"}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Customer search dropdown */}
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={customerSearchQuery}
+                          onChange={(e) => {
+                            setCustomerSearchQuery(e.target.value);
+                            setShowCustomerDropdown(true);
+                          }}
+                          onFocus={() => setShowCustomerDropdown(true)}
+                          placeholder="Search by name, email or phone..."
+                          className="w-full px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary transition-colors text-slate-800"
+                        />
+                        <Search className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                      {showCustomerDropdown && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-48 overflow-y-auto">
+                          {filteredCustomers.length === 0 ? (
+                            <div className="px-4 py-3 text-xs text-slate-400 italic">No customers found</div>
+                          ) : (
+                            filteredCustomers.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  setRequestForm({ ...requestForm, guest_id: c.id.toString() });
+                                  setCustomerSearchQuery(`${c.first_name || ""} ${c.last_name || ""} (${c.email || c.phone || c.id})`);
+                                  setShowCustomerDropdown(false);
+                                }}
+                                className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-primary/10 hover:text-slate-900 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
+                              >
+                                <span className="font-semibold">{c.first_name} {c.last_name}</span>
+                                <span className="text-slate-400 ml-2">{c.email}</span>
+                                {c.phone && <span className="text-slate-400 ml-1">• {c.phone}</span>}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Date</label>
@@ -1751,18 +1954,17 @@ export default function AdminPortal({
                   />
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Status</label>
-                  <select
-                    value={contentForm.status}
-                    onChange={(e) => setContentForm({ ...contentForm, status: e.target.value })}
-                    className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800 cursor-pointer"
-                  >
-                    <option value="available">Available</option>
-                    <option value="unavailable">Unavailable</option>
-                    {editingItem.type === "room" && <option value="maintenance">Maintenance</option>}
-                  </select>
-                </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Status</label>
+                <select
+                  value={contentForm.status}
+                  onChange={(e) => setContentForm({ ...contentForm, status: e.target.value })}
+                  className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800 cursor-pointer"
+                >
+                  <option value="available">Available</option>
+                  <option value="unavailable">Unavailable</option>
+                </select>
+              </div>
               </div>
 
               {editingItem.type === "activity" && (

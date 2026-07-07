@@ -91,11 +91,16 @@ export default function ActivitiesCatalog({ initialActivities }: ActivitiesCatal
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {filteredActivities.map((activity) => {
+            const isAvailable = activity.status === "available";
             const thumbnail = parseImages(activity.image, "activity")[0];
             return (
             <div
               key={activity.id}
-              className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border border-slate-200/80 flex flex-col group"
+              className={`bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-200/80 flex flex-col transition-all duration-300 ${
+                isAvailable
+                  ? "hover:shadow-xl hover:-translate-y-1 group cursor-pointer"
+                  : "opacity-60 grayscale cursor-not-allowed select-none"
+              }`}
             >
               <div className="relative h-64 w-full bg-slate-100 overflow-hidden">
                 <Image
@@ -103,7 +108,7 @@ export default function ActivitiesCatalog({ initialActivities }: ActivitiesCatal
                   alt={activity.title || "Activity Image"}
                   fill
                   sizes="100vw"
-                  className="object-cover group-hover:scale-105 transition-transform duration-500"
+                  className={`object-cover transition-transform duration-500 ${isAvailable ? "group-hover:scale-105" : ""}`}
                 />
                 <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm text-primary font-bold text-sm px-4 py-1.5 rounded-full border border-slate-200/80 shadow-md">
                   {Number(activity.price).toFixed(0)} DH / Person
@@ -111,6 +116,14 @@ export default function ActivitiesCatalog({ initialActivities }: ActivitiesCatal
                 <div className="absolute bottom-4 left-4 bg-slate-950/75 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full border border-white/10">
                   {activity.category}
                 </div>
+                {/* Unavailable overlay */}
+                {!isAvailable && (
+                  <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center">
+                    <span className="bg-slate-900/90 text-white text-xs font-bold uppercase tracking-widest px-4 py-2 rounded-full border border-slate-600 backdrop-blur-sm">
+                      Currently Unavailable
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="p-6 flex flex-col flex-1 gap-3 justify-between">
                 <div>
@@ -119,19 +132,28 @@ export default function ActivitiesCatalog({ initialActivities }: ActivitiesCatal
                     <span>•</span>
                     <span>Capacity: {activity.capacity} max</span>
                   </div>
-                  <h3 className="text-xl font-serif font-bold text-slate-950 group-hover:text-primary transition-colors">
+                  <h3 className={`text-xl font-serif font-bold text-slate-950 transition-colors ${isAvailable ? "group-hover:text-primary" : ""}`}>
                     {activity.title}
                   </h3>
                   <p className="text-slate-600 text-sm leading-relaxed mt-2 line-clamp-3">
                     {activity.description}
                   </p>
                 </div>
-                <Link
-                  href={`/activities/${activity.id}`}
-                  className="mt-6 w-full text-center bg-stone-100 hover:bg-primary hover:text-slate-950 text-slate-800 font-medium py-3 rounded-xl transition-all duration-200 border border-slate-200/60"
-                >
-                  View Activity Details
-                </Link>
+                {isAvailable ? (
+                  <Link
+                    href={`/activities/${activity.id}`}
+                    className="mt-6 w-full text-center bg-stone-100 hover:bg-primary hover:text-slate-950 text-slate-800 font-medium py-3 rounded-xl transition-all duration-200 border border-slate-200/60"
+                  >
+                    View Activity Details
+                  </Link>
+                ) : (
+                  <span
+                    aria-disabled="true"
+                    className="mt-6 w-full text-center bg-slate-100 text-slate-400 font-medium py-3 rounded-xl border border-slate-200/60 cursor-not-allowed"
+                  >
+                    Not Available
+                  </span>
+                )}
               </div>
             </div>
             );

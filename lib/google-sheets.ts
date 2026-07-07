@@ -44,17 +44,39 @@ async function getReadOnlySheetsClient() {
   throw new Error("No Google Sheets credentials available for read access");
 }
 
-// Helper to parse Google Sheets date (YYYY/MM/DD) to a valid Date
+// Helper to parse Google Sheets date to YYYY-MM-DD format
 function parseGoogleSheetDate(dateStr: string): string {
   if (!dateStr) return "";
-  // Try to parse YYYY/MM/DD format
+  
+  // Try to parse date (handles both MM/DD/YYYY and YYYY/MM/DD formats)
   const parts = dateStr.split(/[\/\-]/);
   if (parts.length === 3) {
-    let year = parseInt(parts[0]);
-    let month = parseInt(parts[1]) - 1; // months are 0-indexed in JS
-    let day = parseInt(parts[2]);
+    const p0 = parseInt(parts[0], 10);
+    const p1 = parseInt(parts[1], 10);
+    const p2 = parseInt(parts[2], 10);
     
-    // If first part is 2 digits, assume it's day or month (swap if needed)
+    let year: number, month: number, day: number;
+    
+    // Detect format: if first part > 31, it's YYYY/MM/DD
+    // Otherwise, it's MM/DD/YYYY
+    if (p0 > 31) {
+      // YYYY/MM/DD format
+      year = p0;
+      month = p1 - 1; // months are 0-indexed in JS
+      day = p2;
+    } else if (p2 > 31) {
+      // DD/MM/YYYY format (if needed in future)
+      year = p2;
+      month = p1 - 1;
+      day = p0;
+    } else {
+      // MM/DD/YYYY format (most common in US)
+      year = p2;
+      month = p0 - 1;
+      day = p1;
+    }
+    
+    // Handle 2-digit years
     if (year < 100) {
       year = 2000 + year;
     }
@@ -64,7 +86,14 @@ function parseGoogleSheetDate(dateStr: string): string {
       return date.toISOString().split('T')[0];
     }
   }
-  // Fallback to original string
+  
+  // Fallback: try parsing as ISO date
+  const isoDate = new Date(dateStr);
+  if (!isNaN(isoDate.getTime())) {
+    return isoDate.toISOString().split('T')[0];
+  }
+  
+  // Return original string if all parsing fails
   return dateStr;
 }
 
@@ -132,11 +161,14 @@ async function getRowsWithPositions(tabName: string) {
   });
 
   const allRows = response.data.values || [];
-  if (allRows.length < 2) {
+  if (allRows.length === 0) {
     return { headers: [], validRows: [], allRows: [] };
   }
 
   const headers = allRows[0];
+  if (allRows.length < 2) {
+    return { headers, validRows: [], allRows };
+  }
   const validRows = [];
 
   for (let i = 1; i < allRows.length; i++) {
@@ -164,6 +196,10 @@ export async function writeSheetRow(tabName: string, rowIndex: number | null, da
     }
     const sheets = await getAuthenticatedSheetsClient();
     const { headers, validRows, allRows } = await getRowsWithPositions(tabName);
+
+    if (!headers || headers.length === 0) {
+      throw new Error(`Sheet "${tabName}" has no headers. Please ensure the sheet has a header row.`);
+    }
 
     // Map UI field names back to original header names
     const headerFieldMap: any = {};
@@ -245,7 +281,9 @@ export async function deleteSheetRow(tabName: string, rowIndex: number) {
       spreadsheetId: SPREADSHEET_ID,
     });
     const sheet = spreadsheet.data.sheets?.find((s) => s.properties?.title === tabName);
-    if (!sheet?.properties?.sheetId) throw new Error("Sheet not found");
+    if (!sheet) throw new Error("Sheet not found");
+    const sheetId = sheet.properties?.sheetId;
+    if (sheetId === undefined || sheetId === null) throw new Error("Sheet not found");
 
     // Get actual sheet row index
     const { validRows } = await getRowsWithPositions(tabName);
@@ -259,7 +297,7 @@ export async function deleteSheetRow(tabName: string, rowIndex: number) {
           {
             deleteDimension: {
               range: {
-                sheetId: sheet.properties.sheetId,
+                sheetId,
                 dimension: "ROWS",
                 startIndex: targetRow.sheetRowIndex, // actual row index in sheet
                 endIndex: targetRow.sheetRowIndex + 1,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { db } from "@/lib/db";
 import { verifyToken } from "@/lib/auth";
 import { readSheetRows, writeSheetRow, deleteSheetRow, TAB_NAMES } from "@/lib/google-sheets";
 
@@ -30,9 +31,44 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { id, ...data } = await request.json();
+  const { id, notifyUser, ...data } = await request.json();
   if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+  
   await writeSheetRow(TAB_NAMES.requests, Number(id), data);
+
+  // If the request is being confirmed and notifyUser is set, create a notification
+  if (notifyUser && data.guest_id) {
+    const userId = parseInt(data.guest_id, 10);
+    if (userId) {
+      try {
+        const notif = await db.notifications.create({
+          data: {
+            user_id: userId,
+            title: "Special Request Confirmed",
+            message: `Request Type: ${data.request_type || "request"} — Your special request has been reviewed and confirmed by our team. We look forward to serving you!`,
+            type: "ticket",
+          },
+        });
+
+        // Push real-time notification via WebSocket
+        await fetch("http://localhost:3002/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            id: notif.id,
+            title: notif.title,
+            message: notif.message,
+            type: notif.type,
+            created_at: notif.created_at.toISOString(),
+          }),
+        }).catch((err) => console.error("WS notify failed:", err));
+      } catch (err) {
+        console.error("Failed to create notification for request confirmation:", err);
+      }
+    }
+  }
+
   return NextResponse.json({ success: true });
 }
 

@@ -7,7 +7,10 @@ export const revalidate = 0;
 export default async function ActivitiesPage() {
 
   const dbActivities = await db.activities.findMany({
-    orderBy: { category: "asc" },
+    orderBy: [
+      { status: "asc" },
+      { category: "asc" },
+    ],
   });
 
   const activities = dbActivities.map((act: any) => ({
