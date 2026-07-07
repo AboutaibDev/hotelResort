@@ -3,8 +3,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useDispatch } from "react-redux";
 import { decrementUnread } from "@/lib/redux/notificationsSlice";
-import { Bell, Calendar, X, Inbox, Eye, ShieldAlert, CheckCircle, HelpCircle } from "lucide-react";
+import { Bell, Calendar, X, Inbox, Eye, ShieldAlert, CheckCircle, HelpCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import ModalOverlay from "@/components/ModalOverlay";
+
+const NOTIFS_PER_PAGE = 6;
 
 interface NotificationItem {
   id: number;
@@ -17,13 +19,11 @@ interface NotificationItem {
 
 export default function DashboardNotifications() {
   const dispatch = useDispatch();
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [allNotifications, setAllNotifications] = useState<NotificationItem[]>([]);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [selectedNotif, setSelectedNotif] = useState<NotificationItem | null>(null);
-
-  const observerTarget = useRef<HTMLDivElement>(null);
+  const [initialFetchDone, setInitialFetchDone] = useState(false);
 
   const getCookie = (name: string) => {
     if (typeof document === "undefined") return null;
@@ -48,7 +48,7 @@ export default function DashboardNotifications() {
         ws.onmessage = (event) => {
           try {
             const newNotif = JSON.parse(event.data);
-            setNotifications((prev) => {
+            setAllNotifications((prev) => {
               const exists = prev.some((n) => n.id === newNotif.id);
               if (exists) return prev;
               return [newNotif, ...prev];
@@ -78,57 +78,33 @@ export default function DashboardNotifications() {
     };
   }, []);
 
-  const fetchNotifications = async (p: number) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/notifications?page=${p}&limit=5`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.notifications.length < 5) {
-          setHasMore(false);
+  // Fetch initial notifications
+  useEffect(() => {
+    const fetchAllNotifications = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/notifications?page=1&limit=100");
+        if (res.ok) {
+          const data = await res.json();
+          setAllNotifications(data.notifications || []);
+          setInitialFetchDone(true);
         }
-        setNotifications((prev) => {
-          // Filter out duplicates
-          const existingIds = new Set(prev.map((n) => n.id));
-          const newNotifs = data.notifications.filter((n: NotificationItem) => !existingIds.has(n.id));
-          return [...prev, ...newNotifs];
-        });
+      } catch (err) {
+        console.error("Failed to fetch dashboard notifications:", err);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to fetch dashboard notifications:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fetch when page changes
-  useEffect(() => {
-    fetchNotifications(page);
-  }, [page]);
-
-  // Intersection Observer for scroll-to-load-more
-  useEffect(() => {
-    if (!hasMore || loading) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setPage((prev) => prev + 1);
-        }
-      },
-      { threshold: 1.0 }
-    );
-
-    const target = observerTarget.current;
-    if (target) {
-      observer.observe(target);
-    }
-
-    return () => {
-      if (target) observer.unobserve(target);
-      observer.disconnect();
     };
-  }, [hasMore, loading]);
+
+    fetchAllNotifications();
+  }, []);
+
+  // Paginated notifications for current page
+  const totalPages = Math.max(1, Math.ceil(allNotifications.length / NOTIFS_PER_PAGE));
+  const paginatedNotifications = allNotifications.slice(
+    (page - 1) * NOTIFS_PER_PAGE,
+    page * NOTIFS_PER_PAGE
+  );
 
   const handleNotificationClick = async (notif: NotificationItem) => {
     setSelectedNotif(notif);
@@ -142,16 +118,20 @@ export default function DashboardNotifications() {
           body: JSON.stringify({ id: notif.id }),
         });
         if (res.ok) {
-          // Update local state
-          setNotifications((prev) =>
+          setAllNotifications((prev) =>
             prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n))
           );
-          // Decrement global Redux state
           dispatch(decrementUnread());
         }
       } catch (err) {
         console.error("Failed to mark notification as read:", err);
       }
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setPage(newPage);
     }
   };
 
@@ -173,21 +153,26 @@ export default function DashboardNotifications() {
           <Bell className="h-5 w-5 text-primary" />
           <span>Notifications Feed</span>
         </h3>
-        {notifications.length > 0 && (
+        {allNotifications.length > 0 && (
           <span className="text-xs font-medium text-slate-400">
-            Showing {notifications.length} notification(s)
+            {allNotifications.length} notification(s)
           </span>
         )}
       </div>
 
-      {notifications.length === 0 && !loading ? (
+      {loading && !initialFetchDone ? (
+        <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+          <span className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+          <span>Loading notifications...</span>
+        </div>
+      ) : allNotifications.length === 0 ? (
         <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 shadow-sm flex flex-col items-center gap-3">
           <Inbox className="h-10 w-10 text-slate-300" />
           <p className="text-slate-500 text-sm">No notifications found.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {notifications.map((notif) => (
+          {paginatedNotifications.map((notif) => (
             <div
               key={notif.id}
               onClick={() => handleNotificationClick(notif)}
@@ -219,23 +204,37 @@ export default function DashboardNotifications() {
             </div>
           ))}
 
-          {/* Loading indicator */}
-          {loading && (
-            <div className="py-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-              <span className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
-              <span>Loading notifications...</span>
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-3">
+              <button
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page === 1}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-stone-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => handlePageChange(p)}
+                  className={`h-7 w-7 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                    p === page
+                      ? "bg-primary text-slate-950"
+                      : "border border-slate-200 text-slate-500 hover:bg-stone-50"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page === totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-stone-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
             </div>
-          )}
-
-          {/* Sentinel for infinite scroll */}
-          {hasMore && !loading && (
-            <div ref={observerTarget} className="h-4 w-full"></div>
-          )}
-
-          {!hasMore && notifications.length > 0 && (
-            <p className="text-center text-[11px] text-slate-400 mt-4 italic">
-              You've reached the end of your notifications.
-            </p>
           )}
         </div>
       )}

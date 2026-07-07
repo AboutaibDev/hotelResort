@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import ModalOverlay from "@/components/ModalOverlay";
 
-// ─── Reusable Pagination ─────────────────────────────────────────────────────
+// Reusable Pagination
 const ADMIN_PAGE_SIZE = 8;
 
 function AdminPagination({ page, total, onChange }: { page: number; total: number; onChange: (p: number) => void }) {
@@ -366,34 +366,43 @@ export default function AdminPortal({
     );
   };
 
-  // Change User Role
-  const handleToggleRole = async (userId: number, currentRole: string) => {
-    const newRole = currentRole === "admin" ? "customer" : "admin";
-    showConfirm(
-      `Change this user's role to "${newRole.toUpperCase()}"?`,
-      async () => {
-        setLoading(true);
-        try {
-          const res = await fetch("/api/admin/users", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId, role: newRole }),
-          });
-          if (res.ok) {
-            router.refresh();
-            showAlert("User role updated successfully.", "Success");
-          } else {
-            const data = await res.json();
-            showAlert(data.error || "Failed to update role.", "Error");
-          }
-        } catch (err) {
-          console.error(err);
-          showAlert("Error updating user role.", "Error");
-        } finally {
-          setLoading(false);
-        }
+  // State for editing user details
+  const [editingUser, setEditingUser] = useState<UserItem | null>(null);
+  const [userEditForm, setUserEditForm] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+  });
+
+  // Save Edited User
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: editingUser.id,
+          ...userEditForm,
+        }),
+      });
+      if (res.ok) {
+        setEditingUser(null);
+        router.refresh();
+        showAlert("Customer account updated successfully.", "Success");
+      } else {
+        const data = await res.json();
+        showAlert(data.error || "Failed to update customer.", "Error");
       }
-    );
+    } catch (err) {
+      console.error(err);
+      showAlert("Error updating customer.", "Error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Update Ticket Status
@@ -1192,47 +1201,54 @@ export default function AdminPortal({
         {activeTab === "users" && (
           <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col gap-6 w-full">
             <div className="pb-4 border-b border-slate-200">
-              <h3 className="text-lg font-serif font-bold text-slate-900">User Directory</h3>
-              <p className="text-xs text-slate-400 mt-1">Configure user roles and manage general access credentials.</p>
+              <h3 className="text-lg font-serif font-bold text-slate-900">Customer Accounts</h3>
+              <p className="text-xs text-slate-400 mt-1">View and manage customer account details.</p>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm text-slate-650 min-w-[600px]">
                 <thead>
                   <tr className="border-b border-slate-200/80 text-xs uppercase font-bold text-slate-400">
-                    <th className="py-3 px-2">Customer Details</th>
-                    <th className="py-3 px-2">Contact</th>
-                    <th className="py-3 px-2">Platform Role</th>
-                    <th className="py-3 px-2 text-right">Administrative Action</th>
+                    <th className="py-3 px-2">Customer Name</th>
+                    <th className="py-3 px-2">Email</th>
+                    <th className="py-3 px-2">Phone</th>
+                    <th className="py-3 px-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.slice((usersPage - 1) * ADMIN_PAGE_SIZE, usersPage * ADMIN_PAGE_SIZE).map((u) => (
-                    <tr key={u.id} className="border-b border-slate-100 hover:bg-stone-50/40">
-                      <td className="py-4 px-2 font-medium text-slate-800">
-                        {u.first_name} {u.last_name}
-                      </td>
-                      <td className="py-4 px-2">
-                        <div className="text-xs font-semibold text-slate-750">{u.email}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">{u.phone || "No phone listed"}</div>
-                      </td>
-                      <td className="py-4 px-2">
-                        <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded border ${
-                          u.role === "admin" ? "bg-primary/25 border-primary/20 text-slate-900" : "bg-slate-100 text-slate-500"
-                        }`}>
-                          {u.role}
-                        </span>
-                      </td>
-                      <td className="py-4 px-2 text-right">
-                        <button
-                          onClick={() => handleToggleRole(u.id, u.role)}
-                          className="text-xs font-bold text-primary hover:underline cursor-pointer"
-                        >
-                          Toggle Admin Role
-                        </button>
+                  {users.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-xs text-slate-400 italic">
+                        No customer accounts found.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    users.slice((usersPage - 1) * ADMIN_PAGE_SIZE, usersPage * ADMIN_PAGE_SIZE).map((u) => (
+                      <tr key={u.id} className="border-b border-slate-100 hover:bg-stone-50/40">
+                        <td className="py-4 px-2 font-medium text-slate-800">
+                          {u.first_name} {u.last_name}
+                        </td>
+                        <td className="py-4 px-2 text-xs text-slate-600">{u.email}</td>
+                        <td className="py-4 px-2 text-xs text-slate-600">{u.phone || "—"}</td>
+                        <td className="py-4 px-2 text-right">
+                          <button
+                            onClick={() => {
+                              setUserEditForm({
+                                first_name: u.first_name || "",
+                                last_name: u.last_name || "",
+                                email: u.email || "",
+                                phone: u.phone || "",
+                              });
+                              setEditingUser(u);
+                            }}
+                            className="text-xs font-bold text-primary hover:underline cursor-pointer"
+                          >
+                            Edit Details
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1409,6 +1425,94 @@ export default function AdminPortal({
         )}
       </div>
 
+      {/* Edit User Modal */}
+      {editingUser && (
+      <ModalOverlay open>
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-8 flex flex-col gap-6 animate-fade-in-up">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-primary tracking-wider">Customer Account</span>
+                <h4 className="text-lg font-serif font-bold text-slate-900">Edit Account Details</h4>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveUser} className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">First Name</label>
+                  <input
+                    type="text"
+                    value={userEditForm.first_name}
+                    onChange={(e) => setUserEditForm({ ...userEditForm, first_name: e.target.value })}
+                    placeholder="e.g. Mohammed"
+                    required
+                    className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary transition-colors text-slate-800"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Last Name</label>
+                  <input
+                    type="text"
+                    value={userEditForm.last_name}
+                    onChange={(e) => setUserEditForm({ ...userEditForm, last_name: e.target.value })}
+                    placeholder="e.g. Farah"
+                    required
+                    className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary transition-colors text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Email</label>
+                <input
+                  type="email"
+                  value={userEditForm.email}
+                  onChange={(e) => setUserEditForm({ ...userEditForm, email: e.target.value })}
+                  placeholder="e.g. mohammed.farah@example.com"
+                  required
+                  className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary transition-colors text-slate-800"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Phone (Optional)</label>
+                <input
+                  type="text"
+                  value={userEditForm.phone}
+                  onChange={(e) => setUserEditForm({ ...userEditForm, phone: e.target.value })}
+                  placeholder="e.g. +212 6XX XXX XXX"
+                  className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary transition-colors text-slate-800"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-primary hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition-colors shadow flex items-center gap-2"
+                >
+                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
+          </div>
+      </ModalOverlay>
+      )}
+
       {/* Close Ticket Response Modal */}
       {ticketToClose && (
       <ModalOverlay open>
@@ -1563,7 +1667,7 @@ export default function AdminPortal({
             <form onSubmit={handleSaveRequest} className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Guest ID (optional)</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer ID (optional)</label>
                   <input type="number" value={requestForm.guest_id} onChange={(e) => setRequestForm({ ...requestForm, guest_id: e.target.value })} placeholder="e.g. 42" className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" />
                 </div>
                 <div className="flex flex-col gap-1.5">

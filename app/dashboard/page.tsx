@@ -143,13 +143,6 @@ export default async function DashboardPage() {
                   <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
                 </Link>
 
-                <Link
-                  href="/contact"
-                  className="flex justify-between items-center p-4 bg-stone-50 border border-slate-200/60 rounded-2xl hover:border-primary transition-colors text-slate-800 font-semibold text-sm group"
-                >
-                  <span>Open New Support Ticket</span>
-                  <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-                </Link>
               </div>
             </div>
           </div>

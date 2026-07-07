@@ -21,14 +21,24 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const { userId, role } = await request.json();
-    if (!userId || !role) {
-      return NextResponse.json({ error: "User ID and role are required" }, { status: 450 });
+    const { userId, first_name, last_name, email, phone } = await request.json();
+    if (!userId) {
+      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+    }
+
+    const data: Record<string, string> = {};
+    if (first_name !== undefined) data.first_name = first_name;
+    if (last_name !== undefined) data.last_name = last_name;
+    if (email !== undefined) data.email = email;
+    if (phone !== undefined) data.phone = phone;
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
     const updated = await db.users.update({
       where: { id: parseInt(userId, 10) },
-      data: { role },
+      data,
     });
 
     return NextResponse.json({ success: true, user: updated });

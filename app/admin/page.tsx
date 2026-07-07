@@ -33,7 +33,7 @@ export default async function AdminPage() {
     menuRows,
     requestRows,
   ] = await Promise.all([
-    db.users.findMany({ orderBy: { created_at: "desc" } }),
+    db.users.findMany({ where: { role: "customer" }, orderBy: { created_at: "desc" } }),
     db.rooms.findMany({ orderBy: { created_at: "desc" } }),
     db.activities.findMany({ orderBy: { created_at: "desc" } }),
     db.reservations.findMany({

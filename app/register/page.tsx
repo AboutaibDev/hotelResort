@@ -152,7 +152,7 @@ function RegisterContent() {
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="+212 345 678 901"
+              placeholder="e.g. +212 6XX XXX XXX"
               className="w-full px-4 py-3 bg-stone-50 border border-slate-200 focus:bg-white rounded-xl text-sm focus:outline-none focus:border-primary text-slate-900 transition-colors"
             />
           </div>
