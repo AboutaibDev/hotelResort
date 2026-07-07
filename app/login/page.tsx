@@ -127,11 +127,6 @@ function LoginContent() {
           </button>
         </form>
 
-        <div className="flex items-center gap-2 text-xs text-amber-800 bg-amber-500/5 px-4 py-3 rounded-xl border border-amber-500/10">
-          <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-          <span>Testing? Use an registered admin account to see the Employee and Admin Dashboards!</span>
-        </div>
-
         <p className="text-center text-xs text-slate-500">
           Don&apos;t have an account yet?{" "}
           <Link href={`/register${searchParams.toString() ? `?${searchParams.toString()}` : ""}`} className="text-primary font-bold hover:underline">

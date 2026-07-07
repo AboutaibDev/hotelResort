@@ -280,9 +280,6 @@ export default function CheckoutPage() {
                 <div className="flex items-center gap-3">
                   <Lock className="h-5 w-5 text-primary" />
                   <h3 className="text-lg font-serif font-bold text-slate-900">Secure Payment</h3>
-                  <span className="ml-auto text-[10px] uppercase font-bold text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
-                    256-bit SSL
-                  </span>
                 </div>
 
                 {/* Processing overlay */}
@@ -332,7 +329,7 @@ export default function CheckoutPage() {
                         type="text"
                         value={cardName}
                         onChange={(e) => setCardName(e.target.value)}
-                        placeholder="Zakaria Benali"
+                        placeholder="Mohammed Farah"
                         className="w-full px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary transition-colors text-slate-800"
                       />
                     </div>

@@ -1493,7 +1493,7 @@ export default function AdminPortal({
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Registration</label>
                 <select value={scheduleForm.registration} onChange={(e) => setScheduleForm({ ...scheduleForm, registration: e.target.value })} className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800 cursor-pointer">
                   <option value="No">No</option>
-                  <option value="Yes — Reception">Yes — Reception</option>
+                  <option value="Yes">Yes</option>
                 </select>
               </div>
               <div className="flex justify-end gap-3 pt-2">

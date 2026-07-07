@@ -108,7 +108,7 @@ function RegisterContent() {
                 required
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                placeholder="John"
+                placeholder="Mohammed"
                 className="w-full px-4 py-3 bg-stone-50 border border-slate-200 focus:bg-white rounded-xl text-sm focus:outline-none focus:border-primary text-slate-900 transition-colors"
               />
             </div>
@@ -122,7 +122,7 @@ function RegisterContent() {
                 required
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                placeholder="Doe"
+                placeholder="Farah"
                 className="w-full px-4 py-3 bg-stone-50 border border-slate-200 focus:bg-white rounded-xl text-sm focus:outline-none focus:border-primary text-slate-900 transition-colors"
               />
             </div>
@@ -138,7 +138,7 @@ function RegisterContent() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. john@example.com"
+              placeholder="e.g. guest@example.com"
               className="w-full px-4 py-3 bg-stone-50 border border-slate-200 focus:bg-white rounded-xl text-sm focus:outline-none focus:border-primary text-slate-900 transition-colors"
             />
           </div>
@@ -152,7 +152,7 @@ function RegisterContent() {
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="+1 (555) 019-2834"
+              placeholder="+212 345 678 901"
               className="w-full px-4 py-3 bg-stone-50 border border-slate-200 focus:bg-white rounded-xl text-sm focus:outline-none focus:border-primary text-slate-900 transition-colors"
             />
           </div>
