@@ -47,6 +47,7 @@ export default function ActivityBookingPanel({ activity }: ActivityBookingPanelP
         price: pricePerPerson,
         image: activity.image,
         participantsCount: participants,
+        bookingDate: date,
       })
     );
 

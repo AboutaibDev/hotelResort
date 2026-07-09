@@ -111,7 +111,7 @@ export async function POST(request: Request) {
             data: {
               user_id: decoded.id,
               activity_id: act.id,
-              booking_date: new Date(), // Set as today for simplicity
+              booking_date: new Date(act.bookingDate), // Use the selected date!
               participants_count: act.participantsCount,
               total_price: actTotal,
               status: "confirmed",

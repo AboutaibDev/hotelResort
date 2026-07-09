@@ -13,6 +13,7 @@ export interface SelectedActivity {
   price: number;
   image: string | null;
   participantsCount: number;
+  bookingDate: string;
 }
 
 interface BookingSliceState {

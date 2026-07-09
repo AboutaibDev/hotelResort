@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -30,6 +30,11 @@ function isWithin12Hours(date: Date | null | undefined): boolean {
   if (!date) return false;
   const diffHours = (new Date(date).getTime() - Date.now()) / 3600000;
   return diffHours <= 12;
+}
+
+function isPastReservation(endDate: Date | null | undefined): boolean {
+  if (!endDate) return false;
+  return new Date(endDate).getTime() < Date.now();
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -234,27 +239,35 @@ export default function ReservationsList({ initialReservations, initialActivityB
                     {paginatedRooms.map(res => {
                       const tooLate = isWithin12Hours(res.check_in_date);
                       const canCancel = res.status !== "cancelled" && !tooLate;
+                      const isPast = isPastReservation(res.check_out_date);
                       const thumbnail = res.rooms?.image
                         ? (() => { try { const p = JSON.parse(res.rooms.image!); return p[0] || ""; } catch { return res.rooms.image!; } })()
                         : "";
                       return (
-                        <div key={res.id} className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col group hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+                        <div key={res.id} className={`bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col transition-all duration-300 ${isPast ? "opacity-60 grayscale" : "group hover:shadow-md hover:-translate-y-0.5"}`}>
                           {/* Image */}
                           {thumbnail ? (
-                            <div className="relative h-40 w-full bg-slate-100 overflow-hidden shrink-0">
-                              <Image src={thumbnail} alt={res.rooms?.title || "Room"} fill sizes="400px" className="object-cover group-hover:scale-105 transition-transform duration-500" />
-                              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent" />
-                              <span className={`absolute top-3 right-3 text-[10px] uppercase font-bold px-2.5 py-1 rounded-full border backdrop-blur-sm ${STATUS_COLORS[res.status] || STATUS_COLORS.pending}`}>{res.status}</span>
-                            </div>
-                          ) : (
-                            <div className="h-40 bg-gradient-to-br from-stone-100 to-slate-100 flex items-center justify-center shrink-0">
-                              <BedDouble className="h-10 w-10 text-slate-300" />
-                            </div>
-                          )}
+                    <div className="relative h-40 w-full bg-slate-100 overflow-hidden shrink-0">
+                      <Image src={thumbnail} alt={res.rooms?.title || "Room"} fill sizes="400px" className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent" />
+                      <span className={`absolute top-3 right-3 text-[10px] uppercase font-bold px-2.5 py-1 rounded-full border backdrop-blur-sm ${STATUS_COLORS[res.status] || STATUS_COLORS.pending}`}>{res.status}</span>
+                    </div>
+                  ) : (
+                    <div className="h-40 bg-gradient-to-br from-stone-100 to-slate-100 flex items-center justify-center shrink-0">
+                      <BedDouble className="h-10 w-10 text-slate-300" />
+                    </div>
+                  )}
                           {/* Content */}
                           <div className="p-5 flex flex-col flex-1 gap-3">
                             <div>
-                              <span className="text-[10px] uppercase font-bold text-primary">Booking #{res.id}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] uppercase font-bold text-primary">Booking #{res.id}</span>
+                                {isPast && (
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                                    Past
+                                  </span>
+                                )}
+                              </div>
                               <h4 className="font-bold text-slate-900 text-base mt-0.5 leading-tight">{res.rooms?.title || "Suite"}</h4>
                             </div>
                             <div className="flex flex-col gap-1.5 text-xs text-slate-500">
@@ -321,25 +334,33 @@ export default function ReservationsList({ initialReservations, initialActivityB
                     {paginatedActs.map(bk => {
                       const tooLate = isWithin12Hours(bk.booking_date);
                       const canCancel = bk.status !== "cancelled" && !tooLate;
+                      const isPast = isPastReservation(bk.booking_date);
                       const thumbnail = bk.activities?.image
                         ? (() => { try { const p = JSON.parse(bk.activities.image!); return p[0] || ""; } catch { return bk.activities.image!; } })()
                         : "";
                       return (
-                        <div key={bk.id} className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col group hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+                        <div key={bk.id} className={`bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col transition-all duration-300 ${isPast ? "opacity-60 grayscale" : "group hover:shadow-md hover:-translate-y-0.5"}`}>
                           {thumbnail ? (
-                            <div className="relative h-40 w-full bg-slate-100 overflow-hidden shrink-0">
-                              <Image src={thumbnail} alt={bk.activities?.title || "Activity"} fill sizes="400px" className="object-cover group-hover:scale-105 transition-transform duration-500" />
-                              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent" />
-                              <span className={`absolute top-3 right-3 text-[10px] uppercase font-bold px-2.5 py-1 rounded-full border backdrop-blur-sm ${STATUS_COLORS[bk.status] || STATUS_COLORS.pending}`}>{bk.status}</span>
-                            </div>
-                          ) : (
-                            <div className="h-40 bg-gradient-to-br from-stone-100 to-slate-100 flex items-center justify-center shrink-0">
-                              <Compass className="h-10 w-10 text-slate-300" />
-                            </div>
-                          )}
+                    <div className="relative h-40 w-full bg-slate-100 overflow-hidden shrink-0">
+                      <Image src={thumbnail} alt={bk.activities?.title || "Activity"} fill sizes="400px" className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent" />
+                      <span className={`absolute top-3 right-3 text-[10px] uppercase font-bold px-2.5 py-1 rounded-full border backdrop-blur-sm ${STATUS_COLORS[bk.status] || STATUS_COLORS.pending}`}>{bk.status}</span>
+                    </div>
+                  ) : (
+                    <div className="h-40 bg-gradient-to-br from-stone-100 to-slate-100 flex items-center justify-center shrink-0">
+                      <Compass className="h-10 w-10 text-slate-300" />
+                    </div>
+                  )}
                           <div className="p-5 flex flex-col flex-1 gap-3">
                             <div>
-                              <span className="text-[10px] uppercase font-bold text-primary">Booking #{bk.id}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] uppercase font-bold text-primary">Booking #{bk.id}</span>
+                                {isPast && (
+                                  <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                                    Past
+                                  </span>
+                                )}
+                              </div>
                               <h4 className="font-bold text-slate-900 text-base mt-0.5 leading-tight">{bk.activities?.title || "Activity"}</h4>
                             </div>
                             <div className="flex flex-col gap-1.5 text-xs text-slate-500">

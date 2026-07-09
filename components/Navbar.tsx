@@ -17,7 +17,7 @@ export default function Navbar() {
   const { user, isAuthenticated } = useSelector((state: RootState) => state.auth);
   const { recentNotifications, unreadCount } = useSelector((state: RootState) => state.notifications);
 
-  const [isOpen, setIsOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [notifLimit, setNotifLimit] = useState(5);
   const [notifTotal, setNotifTotal] = useState(0);
@@ -189,8 +189,8 @@ export default function Navbar() {
 
   return (
     <nav
-      className={`fixed top-0 left-0 w-full z-50 transition-all duration-300 ${
-        scrolled || isOpen
+      className={`fixed top-0 left-0 w-full z-[9998] transition-all duration-300 ${
+        scrolled || mobileMenuOpen
           ? "bg-white/95 text-slate-900 backdrop-blur-md border-b border-slate-200/80 shadow-md py-3"
           : "bg-transparent text-slate-800 py-5"
       }`}
@@ -243,7 +243,7 @@ export default function Navbar() {
                 </button>
 
                 {notifDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-fade-in-up">
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-[9999] animate-fade-in-up">
                     <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
                       <span className="font-serif font-bold text-slate-900 text-sm">Notifications</span>
                       {unreadCount > 0 && (
@@ -320,7 +320,7 @@ export default function Navbar() {
                 </button>
 
                 {profileDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-fade-in-up">
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-[9999] animate-fade-in-up">
                     <div className="px-4 py-2 border-b border-slate-100">
                       <p className="text-xs text-slate-400 font-medium">Logged in as</p>
                       <p className="text-sm font-bold text-slate-800 truncate">{user.first_name} {user.last_name}</p>
@@ -384,77 +384,83 @@ export default function Navbar() {
             </Link>
           )}
           <button
-            onClick={() => setIsOpen(!isOpen)}
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="text-current focus:outline-none cursor-pointer"
           >
-            {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
       </div>
 
       {/* Mobile Drawer */}
-      {isOpen && (
-        <div className="fixed inset-0 top-[56px] bg-white/98 backdrop-blur-lg z-40 transition-transform duration-300 md:hidden overflow-y-auto">
-          <div className="flex flex-col p-8 gap-6 text-slate-800">
-            {navLinks.map((link) => {
-              const isActive = pathname === link.href;
-              return (
-                <Link
-                  key={link.name}
-                  href={link.href}
-                  onClick={() => setIsOpen(false)}
-                  className={`text-lg font-medium tracking-wide ${
-                    isActive ? "text-primary font-bold" : "opacity-85"
-                  }`}
-                >
-                  {link.name}
-                </Link>
-              );
-            })}
-            <hr className="border-slate-100 my-2" />
+      {mobileMenuOpen && (
+        <div className="inset-x-0 top-[70px] bottom-0 bg-white z-[9999] md:hidden overflow-y-auto">
+          <div className="flex flex-col p-8 gap-8 text-slate-800">
+            {/* Nav Links */}
+            <div className="flex flex-col gap-5">
+              {navLinks.map((link) => {
+                const isActive = pathname === link.href;
+                return (
+                  <Link
+                    key={link.name}
+                    href={link.href}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`text-2xl font-serif font-medium transition-colors ${
+                      isActive ? "text-primary" : "text-slate-700 hover:text-primary"
+                    }`}
+                  >
+                    {link.name}
+                  </Link>
+                );
+              })}
+            </div>
+
+            <hr className="border-slate-100" />
+
+            {/* User Area */}
             {isAuthenticated && user ? (
-              <div className="flex flex-col gap-4">
-                <div className="bg-stone-50 p-4 rounded-xl border border-slate-200">
-                  <p className="text-xs text-slate-400">Account</p>
-                  <p className="font-bold text-slate-800">{user.first_name} {user.last_name}</p>
+              <div className="flex flex-col gap-5">
+                <div className="bg-stone-50 p-5 rounded-2xl border border-slate-200">
+                  <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-2">Your Account</p>
+                  <p className="text-lg font-bold text-slate-900">{user.first_name} {user.last_name}</p>
                 </div>
                 
                 <Link
                   href="/dashboard"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center justify-center gap-2 bg-slate-100 border border-slate-200/80 py-3 rounded-xl hover:bg-slate-200/80 text-slate-800"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-center gap-3 bg-slate-100 border border-slate-200/80 py-4 rounded-2xl hover:bg-slate-200/80 text-slate-800 transition-colors font-semibold"
                 >
-                  <User className="h-5 w-5" />
-                  <span>My Dashboard</span>
+                  <User className="h-6 w-6" />
+                  <span>Go to Dashboard</span>
                 </Link>
                 
                 {user.role === "admin" && (
                   <Link
                     href="/admin"
-                    onClick={() => setIsOpen(false)}
-                    className="flex items-center justify-center gap-2 bg-primary text-slate-950 py-3 rounded-xl font-semibold"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center justify-center gap-3 bg-primary text-slate-950 py-4 rounded-2xl font-semibold transition-colors hover:bg-amber-400"
                   >
-                    <Shield className="h-5 w-5" />
+                    <Shield className="h-6 w-6" />
                     <span>Admin Panel</span>
                   </Link>
                 )}
                 
                 <button
                   onClick={() => {
-                    setIsOpen(false);
+                    setMobileMenuOpen(false);
                     handleLogout();
                   }}
-                  className="flex items-center justify-center gap-2 text-rose-500 border border-rose-500/20 py-3 rounded-xl hover:bg-rose-500/10 cursor-pointer w-full"
+                  className="flex items-center justify-center gap-3 text-rose-600 border-2 border-rose-100 py-4 rounded-2xl hover:bg-rose-50 cursor-pointer w-full transition-colors font-semibold"
                 >
-                  <LogOut className="h-5 w-5" />
-                  <span>Log Out</span>
+                  <LogOut className="h-6 w-6" />
+                  <span>Sign Out</span>
                 </button>
               </div>
             ) : (
               <Link
                 href="/login"
-                onClick={() => setIsOpen(false)}
-                className="text-center bg-primary text-slate-900 py-3 rounded-xl font-bold"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-center bg-primary text-slate-900 py-4 rounded-2xl font-bold transition-colors hover:bg-amber-400 text-lg"
               >
                 Sign In / Register
               </Link>

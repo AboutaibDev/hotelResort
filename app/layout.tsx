@@ -4,10 +4,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { cookies } from "next/headers";
-import { verifyToken } from "@/lib/auth";
-import { db } from "@/lib/db";
-import VoiceAssistant from "@/components/VoiceAssistant";
+import VoiceAssistantClientWrapper from "@/components/VoiceAssistantClientWrapper";
 
 const playfair = Playfair_Display({
   variable: "--font-serif",
@@ -31,20 +28,6 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("token")?.value;
-  let user = null;
-
-  if (token) {
-    const decoded = verifyToken(token);
-    if (decoded) {
-      user = await db.users.findUnique({
-        select: { id: true, first_name: true },
-        where: { id: decoded.id },
-      });
-    }
-  }
-
   return (
     <html
       lang="en"
@@ -55,9 +38,7 @@ export default async function RootLayout({
           <Navbar />
           <main className="flex-grow pt-20">{children}</main>
           <Footer />
-          {user && (
-            <VoiceAssistant userId={user.id} userName={user.first_name} />
-          )}
+          <VoiceAssistantClientWrapper />
         </Providers>
       </body>
     </html>

@@ -36,7 +36,7 @@ export default function RoomGallery({ images, roomTitle }: RoomGalleryProps) {
     if (lightboxIndex === null) return;
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [lightboxIndex]);
+  }, [lightboxIndex, images]);
 
   // Grid layout: first image large, rest in a 2-col grid
   const [primary, ...rest] = images;

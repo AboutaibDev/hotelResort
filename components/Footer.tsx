@@ -54,7 +54,6 @@ export default function Footer() {
             <li><Link href="/dashboard" className="hover:text-primary transition-colors">My Reservations</Link></li>
             <li><Link href="/dashboard/chat" className="hover:text-primary transition-colors">AI Support Assistant</Link></li>
             <li><Link href="/contact" className="hover:text-primary transition-colors">Help & Support</Link></li>
-            <li><Link href="/login" className="hover:text-primary transition-colors">Portal Access</Link></li>
           </ul>
         </div>
 

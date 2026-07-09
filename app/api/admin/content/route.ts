@@ -114,3 +114,39 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Internal server error: " + error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  const admin = await checkAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get("type");
+    const id = searchParams.get("id");
+
+    if (!type || !id) {
+      return NextResponse.json({ error: "Content type and ID are required" }, { status: 400 });
+    }
+
+    const itemId = parseInt(id, 10);
+
+    if (type === "room") {
+      await db.rooms.delete({
+        where: { id: itemId },
+      });
+      return NextResponse.json({ success: true });
+    } else if (type === "activity") {
+      await db.activities.delete({
+        where: { id: itemId },
+      });
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json({ error: "Invalid content type" }, { status: 400 });
+  } catch (error: any) {
+    console.error("Content deletion error:", error);
+    return NextResponse.json({ error: "Internal server error: " + error.message }, { status: 500 });
+  }
+}
