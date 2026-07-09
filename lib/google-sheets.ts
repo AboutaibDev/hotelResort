@@ -44,7 +44,7 @@ async function getReadOnlySheetsClient() {
   throw new Error("No Google Sheets credentials available for read access");
 }
 
-// Helper to parse Google Sheets date to YYYY-MM-DD format
+// Helper to parse Google Sheets date to YYYY-MM-DD format (local time)
 function parseGoogleSheetDate(dateStr: string): string {
   if (!dateStr) return "";
   
@@ -81,20 +81,78 @@ function parseGoogleSheetDate(dateStr: string): string {
       year = 2000 + year;
     }
     
+    // Create date in local timezone
     const date = new Date(year, month, day);
     if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
+      // Format as YYYY-MM-DD in local time
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
     }
   }
   
   // Fallback: try parsing as ISO date
   const isoDate = new Date(dateStr);
   if (!isNaN(isoDate.getTime())) {
-    return isoDate.toISOString().split('T')[0];
+    // Format as YYYY-MM-DD in local time
+    const y = isoDate.getFullYear();
+    const m = String(isoDate.getMonth() + 1).padStart(2, '0');
+    const d = String(isoDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
   
   // Return original string if all parsing fails
   return dateStr;
+}
+
+// Helper to parse time string to HH:MM format (for input type="time")
+function parseTimeTo24h(timeStr: string): string {
+  if (!timeStr) return "";
+  
+  // If already in HH:MM format, return as is
+  if (/^\d{1,2}:\d{2}$/.test(timeStr.trim())) {
+    const [h, m] = timeStr.trim().split(':');
+    return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+  }
+  
+  // Parse from 12h format (e.g., "11:15 AM")
+  const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const period = (match[3] || "").toUpperCase();
+    
+    if (period === "PM" && hours < 12) hours += 12;
+    if (period === "AM" && hours === 12) hours = 0;
+    
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+  
+  return timeStr;
+}
+
+// Helper to format time from HH:MM to 12h format (e.g., "11:15 AM")
+function formatTimeTo12h(timeStr: string): string {
+  if (!timeStr) return "";
+  
+  // If already in 12h format, return as is
+  if (/AM|PM/i.test(timeStr)) return timeStr;
+  
+  // Parse from HH:MM format
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const period = hours >= 12 ? "PM" : "AM";
+    
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    
+    return `${hours}:${String(minutes).padStart(2, '0')} ${period}`;
+  }
+  
+  return timeStr;
 }
 
 // Read all rows from a specific tab
@@ -130,7 +188,7 @@ export async function readSheetRows(tabName: string) {
         // Map to exact field names
         if (normalizedHeader === "date") obj.date = parseGoogleSheetDate(value);
         else if (normalizedHeader === "activity") obj.activity = value;
-        else if (normalizedHeader === "time") obj.time = value;
+        else if (normalizedHeader === "time") obj.time = parseTimeTo24h(value); // Parse time to 24h for UI
         else if (normalizedHeader === "description") obj.description = value;
         else if (normalizedHeader === "registration") obj.registration = value;
         else if (normalizedHeader === "meal") obj.meal = value;
@@ -237,6 +295,10 @@ export async function writeSheetRow(tabName: string, rowIndex: number | null, da
             break;
           }
         }
+      }
+      // Convert time to 12h format when saving
+      if (header.toLowerCase() === "time") {
+        value = formatTimeTo12h(value);
       }
       return value || "";
     });

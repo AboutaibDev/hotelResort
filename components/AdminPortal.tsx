@@ -14,6 +14,29 @@ import ModalOverlay from "@/components/ModalOverlay";
 // Reusable Pagination
 const ADMIN_PAGE_SIZE = 8;
 
+// Helper to format time from HH:MM to 12h format (e.g., "11:15 AM")
+function formatTime12h(timeStr: string): string {
+  if (!timeStr) return "";
+  
+  // If already in 12h format, return as is
+  if (/AM|PM/i.test(timeStr)) return timeStr;
+  
+  // Parse from HH:MM format
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const period = hours >= 12 ? "PM" : "AM";
+    
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    
+    return `${hours}:${String(minutes).padStart(2, '0')} ${period}`;
+  }
+  
+  return timeStr;
+}
+
 function AdminPagination({ page, total, onChange }: { page: number; total: number; onChange: (p: number) => void }) {
   const totalPages = Math.ceil(total / ADMIN_PAGE_SIZE);
   if (totalPages <= 1) return null;
@@ -214,7 +237,7 @@ export default function AdminPortal({
   const [menuModal, setMenuModal] = useState<{ open: boolean; item: MenuItemRow | null }>({ open: false, item: null });
   const [requestModal, setRequestModal] = useState<{ open: boolean; item: RequestItem | null }>({ open: false, item: null });
 
-  const emptyScheduleForm = { date: "", activity: "", time: "", description: "", registration: "" };
+  const emptyScheduleForm = { date: "", activity: "", time: "", description: "", registration: "No" };
   const emptyMenuForm = { date: "", meal: "Breakfast", title: "", time: "", description: "" };
   const emptyRequestForm = { guest_id: "", date: "", request_type: "", status: "Pending" };
 
@@ -1395,27 +1418,78 @@ export default function AdminPortal({
                 <tbody>
                   {scheduleList.length === 0 ? (
                     <tr><td colSpan={6} className="py-8 text-center text-xs text-slate-400 italic">No events scheduled yet.</td></tr>
-                  ) : scheduleList.slice((schedulePage - 1) * ADMIN_PAGE_SIZE, schedulePage * ADMIN_PAGE_SIZE).map((row) => (
-                    <tr key={row.id} className="border-b border-slate-100 hover:bg-stone-50/40">
-                      <td className="py-3 px-2 text-xs text-slate-600">{new Date(row.date).toLocaleDateString()}</td>
-                      <td className="py-3 px-2 font-semibold text-slate-800">{row.activity}</td>
-                      <td className="py-3 px-2 text-xs text-slate-500">{row.time}</td>
-                      <td className="py-3 px-2 text-xs text-slate-500 max-w-[200px] truncate">{row.description}</td>
-                      <td className="py-3 px-2">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                          row.registration && row.registration !== "No"
-                            ? "bg-amber-500/10 border-amber-500/20 text-amber-700"
-                            : "bg-slate-100 border-slate-200 text-slate-500"
-                        }`}>{row.registration || "No"}</span>
-                      </td>
-                      <td className="py-3 px-2 text-right">
-                        <div className="flex justify-end gap-3">
-                          <button onClick={() => { setScheduleForm({ date: new Date(row.date).toISOString().split("T")[0], activity: row.activity, time: row.time, description: row.description || "", registration: row.registration || "" }); setScheduleModal({ open: true, item: row }); }} className="text-xs font-bold text-primary hover:underline cursor-pointer">Edit</button>
-                          <button onClick={() => handleDeleteSchedule(row.id)} className="text-xs font-bold text-rose-500 hover:underline cursor-pointer">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  ) : (
+                    (() => {
+                      const now = new Date();
+                      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+                      
+                      const getDateTime = (row: ScheduleItem) => {
+                        const date = new Date(row.date);
+                        const timeParts = row.time.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+                        if (timeParts) {
+                          let hours = parseInt(timeParts[1]);
+                          const minutes = parseInt(timeParts[2]);
+                          const period = timeParts[3]?.toUpperCase();
+                          if (period === "PM" && hours < 12) hours += 12;
+                          if (period === "AM" && hours === 12) hours = 0;
+                          date.setHours(hours, minutes, 0, 0);
+                        }
+                        return date;
+                      };
+
+                      const upcoming = scheduleList.filter(row => {
+                        const dt = getDateTime(row);
+                        return dt >= now;
+                      }).sort((a, b) => getDateTime(a).getTime() - getDateTime(b).getTime());
+
+                      const past = scheduleList.filter(row => {
+                        const dt = getDateTime(row);
+                        return dt < now;
+                      }).sort((a, b) => getDateTime(b).getTime() - getDateTime(a).getTime());
+
+                      const sorted = [...upcoming, ...past];
+                      const paginated = sorted.slice((schedulePage - 1) * ADMIN_PAGE_SIZE, schedulePage * ADMIN_PAGE_SIZE);
+
+                      return paginated.map((row) => {
+                        const isPast = getDateTime(row) < now;
+                        return (
+                          <tr key={row.id} className={`border-b border-slate-100 transition-colors ${isPast ? "opacity-50 bg-slate-50" : "hover:bg-stone-50/40"}`}>
+                            <td className="py-3 px-2 text-xs text-slate-600">
+                              {new Date(row.date).toLocaleDateString()}
+                              {isPast && <span className="ml-2 text-[9px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">Past</span>}
+                            </td>
+                            <td className="py-3 px-2 font-semibold text-slate-800">{row.activity}</td>
+                            <td className="py-3 px-2 text-xs text-slate-500">{formatTime12h(row.time)}</td>
+                            <td className="py-3 px-2 text-xs text-slate-500 max-w-[200px] truncate">{row.description}</td>
+                            <td className="py-3 px-2">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                row.registration && row.registration !== "No"
+                                  ? "bg-amber-500/10 border-amber-500/20 text-amber-700"
+                                  : "bg-slate-100 border-slate-200 text-slate-500"
+                              }`}>{row.registration || "No"}</span>
+                            </td>
+                            <td className="py-3 px-2 text-right">
+                              <div className="flex justify-end gap-3">
+                                <button onClick={() => {
+                                  const d = new Date(row.date);
+                                  const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                                  setScheduleForm({ 
+                                    date: dateStr, 
+                                    activity: row.activity, 
+                                    time: row.time, 
+                                    description: row.description || "", 
+                                    registration: row.registration || "No" 
+                                  });
+                                  setScheduleModal({ open: true, item: row });
+                                }} className="text-xs font-bold text-primary hover:underline cursor-pointer">Edit</button>
+                                <button onClick={() => handleDeleteSchedule(row.id)} className="text-xs font-bold text-rose-500 hover:underline cursor-pointer">Delete</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1453,23 +1527,83 @@ export default function AdminPortal({
                 <tbody>
                   {menuList.length === 0 ? (
                     <tr><td colSpan={6} className="py-8 text-center text-xs text-slate-400 italic">No menu items yet.</td></tr>
-                  ) : menuList.slice((menuPage - 1) * ADMIN_PAGE_SIZE, menuPage * ADMIN_PAGE_SIZE).map((row) => (
-                    <tr key={row.id} className="border-b border-slate-100 hover:bg-stone-50/40">
-                      <td className="py-3 px-2 text-xs text-slate-600">{new Date(row.date).toLocaleDateString()}</td>
-                      <td className="py-3 px-2">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-primary/10 text-primary">{row.meal}</span>
-                      </td>
-                      <td className="py-3 px-2 font-semibold text-slate-800">{row.title}</td>
-                      <td className="py-3 px-2 text-xs text-slate-500">{row.time}</td>
-                      <td className="py-3 px-2 text-xs text-slate-500 max-w-[200px] truncate">{row.description}</td>
-                      <td className="py-3 px-2 text-right">
-                        <div className="flex justify-end gap-3">
-                          <button onClick={() => { setMenuForm({ date: new Date(row.date).toISOString().split("T")[0], meal: row.meal, title: row.title, time: row.time, description: row.description || "" }); setMenuModal({ open: true, item: row }); }} className="text-xs font-bold text-primary hover:underline cursor-pointer">Edit</button>
-                          <button onClick={() => handleDeleteMenu(row.id)} className="text-xs font-bold text-rose-500 hover:underline cursor-pointer">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  ) : (
+                    (() => {
+                      const now = new Date();
+                      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+                      
+                      const getDateTime = (row: MenuItemRow) => {
+                        const date = new Date(row.date);
+                        const timeParts = row.time.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+                        if (timeParts) {
+                          let hours = parseInt(timeParts[1]);
+                          const minutes = parseInt(timeParts[2]);
+                          const period = timeParts[3]?.toUpperCase();
+                          if (period === "PM" && hours < 12) hours += 12;
+                          if (period === "AM" && hours === 12) hours = 0;
+                          date.setHours(hours, minutes, 0, 0);
+                        }
+                        return date;
+                      };
+
+                      const upcoming = menuList.filter(row => {
+                        const dt = getDateTime(row);
+                        return dt >= now;
+                      }).sort((a, b) => getDateTime(a).getTime() - getDateTime(b).getTime());
+
+                      const past = menuList.filter(row => {
+                        const dt = getDateTime(row);
+                        return dt < now;
+                      }).sort((a, b) => getDateTime(b).getTime() - getDateTime(a).getTime());
+
+                      const sorted = [...upcoming, ...past];
+                      const paginated = sorted.slice((menuPage - 1) * ADMIN_PAGE_SIZE, menuPage * ADMIN_PAGE_SIZE);
+
+                      const getMealColorClasses = (meal: string) => {
+                        switch(meal.toLowerCase()) {
+                          case 'breakfast': return 'bg-orange-500/10 border-orange-500/20 text-orange-700';
+                          case 'lunch': return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700';
+                          case 'dinner': return 'bg-purple-500/10 border-purple-500/20 text-purple-700';
+                          default: return 'bg-primary/10 border-primary/20 text-primary';
+                        }
+                      };
+
+                      return paginated.map((row) => {
+                        const isPast = getDateTime(row) < now;
+                        return (
+                          <tr key={row.id} className={`border-b border-slate-100 transition-colors ${isPast ? "opacity-50 bg-slate-50" : "hover:bg-stone-50/40"}`}>
+                            <td className="py-3 px-2 text-xs text-slate-600">
+                              {new Date(row.date).toLocaleDateString()}
+                              {isPast && <span className="ml-2 text-[9px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full">Past</span>}
+                            </td>
+                            <td className="py-3 px-2">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getMealColorClasses(row.meal)}`}>{row.meal}</span>
+                            </td>
+                            <td className="py-3 px-2 font-semibold text-slate-800">{row.title}</td>
+                            <td className="py-3 px-2 text-xs text-slate-500">{formatTime12h(row.time)}</td>
+                            <td className="py-3 px-2 text-xs text-slate-500 max-w-[200px] truncate">{row.description}</td>
+                            <td className="py-3 px-2 text-right">
+                              <div className="flex justify-end gap-3">
+                                <button onClick={() => {
+                                  const d = new Date(row.date);
+                                  const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                                  setMenuForm({ 
+                                    date: dateStr, 
+                                    meal: row.meal, 
+                                    title: row.title, 
+                                    time: row.time, 
+                                    description: row.description || "" 
+                                  });
+                                  setMenuModal({ open: true, item: row });
+                                }} className="text-xs font-bold text-primary hover:underline cursor-pointer">Edit</button>
+                                <button onClick={() => handleDeleteMenu(row.id)} className="text-xs font-bold text-rose-500 hover:underline cursor-pointer">Delete</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1735,11 +1869,24 @@ export default function AdminPortal({
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Date</label>
-                  <input type="date" required value={scheduleForm.date} onChange={(e) => setScheduleForm({ ...scheduleForm, date: e.target.value })} className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" />
+                  <input 
+                    type="date" 
+                    required 
+                    min={new Date().toISOString().split('T')[0]}
+                    value={scheduleForm.date} 
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, date: e.target.value })} 
+                    className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" 
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Time</label>
-                  <input type="text" required placeholder="e.g. 8:00 PM" value={scheduleForm.time} onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })} className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" />
+                  <input 
+                    type="time" 
+                    required 
+                    value={scheduleForm.time} 
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })} 
+                    className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" 
+                  />
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
@@ -1778,7 +1925,14 @@ export default function AdminPortal({
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Date</label>
-                  <input type="date" required value={menuForm.date} onChange={(e) => setMenuForm({ ...menuForm, date: e.target.value })} className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" />
+                  <input 
+                    type="date" 
+                    required 
+                    min={new Date().toISOString().split('T')[0]}
+                    value={menuForm.date} 
+                    onChange={(e) => setMenuForm({ ...menuForm, date: e.target.value })} 
+                    className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" 
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Meal Type</label>
@@ -1797,7 +1951,13 @@ export default function AdminPortal({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Time</label>
-                  <input type="text" required placeholder="e.g. 1:00 PM" value={menuForm.time} onChange={(e) => setMenuForm({ ...menuForm, time: e.target.value })} className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" />
+                  <input 
+                    type="time" 
+                    required 
+                    value={menuForm.time} 
+                    onChange={(e) => setMenuForm({ ...menuForm, time: e.target.value })} 
+                    className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" 
+                  />
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
@@ -1822,7 +1982,18 @@ export default function AdminPortal({
               <button onClick={() => setRequestModal({ open: false, item: null })} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 cursor-pointer"><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={handleSaveRequest} className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Date</label>
+                  <input 
+                    type="date" 
+                    required 
+                    min={new Date().toISOString().split('T')[0]}
+                    value={requestForm.date} 
+                    onChange={(e) => setRequestForm({ ...requestForm, date: e.target.value })} 
+                    className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" 
+                  />
+                </div>
                 <div className="flex flex-col gap-1.5 relative">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer</label>
                   {requestModal.item ? (
@@ -1872,10 +2043,6 @@ export default function AdminPortal({
                       )}
                     </>
                   )}
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Date</label>
-                  <input type="date" required value={requestForm.date} onChange={(e) => setRequestForm({ ...requestForm, date: e.target.value })} className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" />
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
