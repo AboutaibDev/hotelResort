@@ -53,7 +53,7 @@ export default async function HomePage() {
       : null,
   }));
 
-  console.log(rooms[0].image)
+  // console.log(rooms[0].image)
 
   return (
     <div className="flex flex-col min-h-screen">

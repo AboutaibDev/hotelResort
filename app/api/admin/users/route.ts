@@ -74,7 +74,6 @@ export async function DELETE(request: Request) {
       db.reviews.deleteMany({ where: { user_id: userId } }),
       db.notifications.deleteMany({ where: { user_id: userId } }),
       db.support_tickets.deleteMany({ where: { user_id: userId } }),
-      db.ai_messages.deleteMany({ where: { user_id: userId } }),
       db.users.delete({ where: { id: userId } }),
     ]);
 
