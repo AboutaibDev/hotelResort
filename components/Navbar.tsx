@@ -202,7 +202,7 @@ export default function Navbar() {
             <span className="text-xl font-bold tracking-widest text-primary font-serif leading-none">
               AMANORA
             </span>
-            <span className="block h-[2px] w-full bg-primary/40 rounded-full mt-0.5 group-hover:w-3/4 transition-all duration-300" />
+            <span className="block h-[2px] w-0 bg-primary rounded-full mt-0.5 group-hover:w-full transition-all duration-300" />
           </span>
         </Link>
 
