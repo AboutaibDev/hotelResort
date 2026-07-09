@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { parseImages, stringifyImages } from "@/lib/images";
 import {
@@ -248,6 +248,24 @@ export default function AdminPortal({
   // Customer search state for request modal
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Hide customer dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        customerDropdownRef.current &&
+        !customerDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowCustomerDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
   const filteredCustomers = users.filter((u) => {
     if (!customerSearchQuery.trim()) return true;
     const q = customerSearchQuery.toLowerCase();
@@ -256,7 +274,6 @@ export default function AdminPortal({
       u.last_name?.toLowerCase().includes(q) ||
       `${u.first_name || ""} ${u.last_name || ""}`.toLowerCase().includes(q) ||
       u.email?.toLowerCase().includes(q) ||
-      u.phone?.toLowerCase().includes(q) ||
       u.id.toString().includes(q)
     );
   });
@@ -273,6 +290,27 @@ export default function AdminPortal({
   useEffect(() => {
     setRequestList(initialRequests);
   }, [initialRequests]);
+
+  // Reset forms when modals are closed
+  useEffect(() => {
+    if (!scheduleModal.open) {
+      setScheduleForm(emptyScheduleForm);
+    }
+  }, [scheduleModal.open]);
+
+  useEffect(() => {
+    if (!menuModal.open) {
+      setMenuForm(emptyMenuForm);
+    }
+  }, [menuModal.open]);
+
+  useEffect(() => {
+    if (!requestModal.open) {
+      setRequestForm(emptyRequestForm);
+      setCustomerSearchQuery("");
+      setShowCustomerDropdown(false);
+    }
+  }, [requestModal.open]);
 
   // Pagination state per tab
   const [usersPage, setUsersPage] = useState(1);
@@ -293,20 +331,36 @@ export default function AdminPortal({
 
   // Loading states
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Custom Alert / Confirm Modals
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; title: string; message: string }>({
     isOpen: false, title: "", message: "",
   });
   const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: (() => void) | null;
-  }>({ isOpen: false, title: "", message: "", onConfirm: null });
+    isOpen: boolean; title: string; message: string; onConfirm: (() => void) | null; isLoading: boolean;
+  }>({ isOpen: false, title: "", message: "", onConfirm: null, isLoading: false });
 
   const showAlert = (message: string, title = "System Notification") =>
     setAlertModal({ isOpen: true, title, message });
 
   const showConfirm = (message: string, onConfirm: () => void, title = "Confirm Action") =>
-    setConfirmModal({ isOpen: true, title, message, onConfirm });
+    setConfirmModal({ isOpen: true, title, message, onConfirm, isLoading: false });
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await router.refresh();
+      // Add a small delay to make the loading state visible
+      await new Promise(resolve => setTimeout(resolve, 500));
+      showAlert("Data refreshed successfully!", "Success");
+    } catch (err) {
+      console.error(err);
+      showAlert("Failed to refresh data.", "Error");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Calculations
   const totalRevenue = payments
@@ -383,23 +437,24 @@ export default function AdminPortal({
     showConfirm(
       `Are you sure you want to permanently delete this ${type}? This action cannot be undone.`,
       async () => {
-        setLoading(true);
+        setConfirmModal(prev => ({ ...prev, isLoading: true }));
         try {
           const res = await fetch(`/api/admin/content?type=${type}&id=${id}`, {
             method: "DELETE",
           });
           if (res.ok) {
+            setConfirmModal(prev => ({ ...prev, isOpen: false }));
             router.refresh();
             showAlert(`${type.toUpperCase()} deleted successfully.`, "Success");
           } else {
             const data = await res.json();
+            setConfirmModal(prev => ({ ...prev, isLoading: false }));
             showAlert(data.error || "Failed to delete content.", "Error");
           }
         } catch (err) {
           console.error(err);
+          setConfirmModal(prev => ({ ...prev, isLoading: false }));
           showAlert("Error deleting content.", "Error");
-        } finally {
-          setLoading(false);
         }
       }
     );
@@ -553,12 +608,23 @@ export default function AdminPortal({
 
   const handleDeleteSchedule = (id: number) => {
     showConfirm("Delete this schedule entry?", async () => {
-      setLoading(true);
+      setConfirmModal(prev => ({ ...prev, isLoading: true }));
       try {
         const res = await fetch(`/api/admin/schedule?id=${id}`, { method: "DELETE" });
-        if (res.ok) { router.refresh(); showAlert("Deleted.", "Success"); }
-        else { const d = await res.json(); showAlert(d.error || "Delete failed.", "Error"); }
-      } catch { showAlert("Error deleting.", "Error"); } finally { setLoading(false); }
+        if (res.ok) { 
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          router.refresh(); 
+          showAlert("Deleted.", "Success"); 
+        }
+        else { 
+          const d = await res.json(); 
+          setConfirmModal(prev => ({ ...prev, isLoading: false }));
+          showAlert(d.error || "Delete failed.", "Error"); 
+        }
+      } catch { 
+        setConfirmModal(prev => ({ ...prev, isLoading: false }));
+        showAlert("Error deleting.", "Error"); 
+      }
     });
   };
 
@@ -577,17 +643,38 @@ export default function AdminPortal({
 
   const handleDeleteMenu = (id: number) => {
     showConfirm("Delete this menu entry?", async () => {
-      setLoading(true);
+      setConfirmModal(prev => ({ ...prev, isLoading: true }));
       try {
         const res = await fetch(`/api/admin/menu?id=${id}`, { method: "DELETE" });
-        if (res.ok) { router.refresh(); showAlert("Deleted.", "Success"); }
-        else { const d = await res.json(); showAlert(d.error || "Delete failed.", "Error"); }
-      } catch { showAlert("Error deleting.", "Error"); } finally { setLoading(false); }
+        if (res.ok) { 
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          router.refresh(); 
+          showAlert("Deleted.", "Success"); 
+        }
+        else { 
+          const d = await res.json(); 
+          setConfirmModal(prev => ({ ...prev, isLoading: false }));
+          showAlert(d.error || "Delete failed.", "Error"); 
+        }
+      } catch { 
+        setConfirmModal(prev => ({ ...prev, isLoading: false }));
+        showAlert("Error deleting.", "Error"); 
+      }
     });
   };
 
   const handleSaveRequest = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate customer
+    if (!requestModal.item) {
+      const isValidCustomer = users.some(u => u.id.toString() === requestForm.guest_id);
+      if (!isValidCustomer) {
+        showAlert("Please select a valid customer.", "Error");
+        return;
+      }
+    }
+
     if (!requestModal.item) {
       // Creating a new request
       setLoading(true);
@@ -631,12 +718,23 @@ export default function AdminPortal({
 
   const handleDeleteRequest = (id: number) => {
     showConfirm("Delete this special request?", async () => {
-      setLoading(true);
+      setConfirmModal(prev => ({ ...prev, isLoading: true }));
       try {
         const res = await fetch(`/api/admin/requests?id=${id}`, { method: "DELETE" });
-        if (res.ok) { router.refresh(); showAlert("Deleted.", "Success"); }
-        else { const d = await res.json(); showAlert(d.error || "Delete failed.", "Error"); }
-      } catch { showAlert("Error deleting.", "Error"); } finally { setLoading(false); }
+        if (res.ok) { 
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          router.refresh(); 
+          showAlert("Deleted.", "Success"); 
+        }
+        else { 
+          const d = await res.json(); 
+          setConfirmModal(prev => ({ ...prev, isLoading: false }));
+          showAlert(d.error || "Delete failed.", "Error"); 
+        }
+      } catch { 
+        setConfirmModal(prev => ({ ...prev, isLoading: false }));
+        showAlert("Error deleting.", "Error"); 
+      }
     });
   };
 
@@ -706,7 +804,7 @@ export default function AdminPortal({
         >
           <div className="flex items-center gap-2.5">
             <Ticket className="h-4 w-4" />
-            <span>Support Tickets</span>
+            <span>Tickets</span>
             {pendingTicketsCount > 0 && (
               <span className="bg-rose-500 text-white text-[10px] h-5 w-5 rounded-full flex items-center justify-center font-bold">
                 {pendingTicketsCount}
@@ -1396,12 +1494,22 @@ export default function AdminPortal({
                 <h3 className="text-lg font-serif font-bold text-slate-900">Entertainment Schedule</h3>
                 <p className="text-xs text-slate-400 mt-1">Manage nightly events and resort activities schedule.</p>
               </div>
-              <button
-                onClick={() => { setScheduleForm(emptyScheduleForm); setScheduleModal({ open: true, item: null }); }}
-                className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
-              >
-                <Plus className="h-4 w-4" /><span>Add Event</span>
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="bg-stone-100 hover:bg-stone-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  <span>Refresh</span>
+                </button>
+                <button
+                  onClick={() => { setScheduleForm(emptyScheduleForm); setScheduleModal({ open: true, item: null }); }}
+                  className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
+                >
+                  <Plus className="h-4 w-4" /><span>Add Event</span>
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm min-w-[700px]">
@@ -1505,12 +1613,22 @@ export default function AdminPortal({
                 <h3 className="text-lg font-serif font-bold text-slate-900">Restaurant Menu Schedule</h3>
                 <p className="text-xs text-slate-400 mt-1">Manage daily dining offerings and special food nights.</p>
               </div>
-              <button
-                onClick={() => { setMenuForm(emptyMenuForm); setMenuModal({ open: true, item: null }); }}
-                className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
-              >
-                <Plus className="h-4 w-4" /><span>Add Menu Item</span>
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="bg-stone-100 hover:bg-stone-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  <span>Refresh</span>
+                </button>
+                <button
+                  onClick={() => { setMenuForm(emptyMenuForm); setMenuModal({ open: true, item: null }); }}
+                  className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
+                >
+                  <Plus className="h-4 w-4" /><span>Add Menu Item</span>
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm min-w-[650px]">
@@ -1619,12 +1737,22 @@ export default function AdminPortal({
                 <h3 className="text-lg font-serif font-bold text-slate-900">Guest Special Requests</h3>
                 <p className="text-xs text-slate-400 mt-1">Track and manage all custom guest requests and their fulfillment status.</p>
               </div>
-              <button
-                onClick={() => { setRequestForm(emptyRequestForm); setRequestModal({ open: true, item: null }); }}
-                className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
-              >
-                <Plus className="h-4 w-4" /><span>Add Request</span>
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="bg-stone-100 hover:bg-stone-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  <span>Refresh</span>
+                </button>
+                <button
+                  onClick={() => { setRequestForm(emptyRequestForm); setRequestModal({ open: true, item: null }); }}
+                  className="bg-primary hover:bg-amber-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow"
+                >
+                  <Plus className="h-4 w-4" /><span>Add Request</span>
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm min-w-[600px]">
@@ -1994,7 +2122,7 @@ export default function AdminPortal({
                     className="px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary text-slate-800" 
                   />
                 </div>
-                <div className="flex flex-col gap-1.5 relative">
+                <div className="flex flex-col gap-1.5 relative" ref={customerDropdownRef}>
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer</label>
                   {requestModal.item ? (
                     <div className="px-4 py-2.5 bg-stone-100 border border-slate-200 rounded-xl text-sm text-slate-500 font-mono">
@@ -2008,11 +2136,22 @@ export default function AdminPortal({
                           type="text"
                           value={customerSearchQuery}
                           onChange={(e) => {
-                            setCustomerSearchQuery(e.target.value);
+                            const newValue = e.target.value;
+                            setCustomerSearchQuery(newValue);
                             setShowCustomerDropdown(true);
+                            // Clear selected customer when user types something new
+                            setRequestForm({ ...requestForm, guest_id: "" });
                           }}
                           onFocus={() => setShowCustomerDropdown(true)}
-                          placeholder="Search by name, email or phone..."
+                          onBlur={() => {
+                            // If no valid customer is selected, clear the search query
+                            const isValidCustomer = users.some(u => u.id.toString() === requestForm.guest_id);
+                            if (!isValidCustomer) {
+                              setCustomerSearchQuery("");
+                            }
+                          }}
+                          placeholder="Search by name, email or ID..."
+                          autoComplete="off"
                           className="w-full px-4 py-2.5 bg-stone-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-primary transition-colors text-slate-800"
                         />
                         <Search className="h-4 w-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -2028,14 +2167,13 @@ export default function AdminPortal({
                                 type="button"
                                 onClick={() => {
                                   setRequestForm({ ...requestForm, guest_id: c.id.toString() });
-                                  setCustomerSearchQuery(`${c.first_name || ""} ${c.last_name || ""} (${c.email || c.phone || c.id})`);
+                                  setCustomerSearchQuery(`${c.first_name || ""} ${c.last_name || ""} (ID: ${c.id})`);
                                   setShowCustomerDropdown(false);
                                 }}
                                 className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-primary/10 hover:text-slate-900 transition-colors border-b border-slate-100 last:border-0 cursor-pointer"
                               >
                                 <span className="font-semibold">{c.first_name} {c.last_name}</span>
-                                <span className="text-slate-400 ml-2">{c.email}</span>
-                                {c.phone && <span className="text-slate-400 ml-1">• {c.phone}</span>}
+                                <span className="text-slate-400 ml-2">ID: {c.id}</span>
                               </button>
                             ))
                           )}
@@ -2262,18 +2400,21 @@ export default function AdminPortal({
             <div className="flex gap-3 w-full mt-2">
               <button
                 onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
-                className="flex-1 bg-stone-100 hover:bg-stone-200 text-slate-700 font-bold py-2.5 rounded-xl transition-colors text-xs"
+                disabled={confirmModal.isLoading}
+                className="flex-1 bg-stone-100 hover:bg-stone-200 text-slate-700 font-bold py-2.5 rounded-xl transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 onClick={() => {
-                  setConfirmModal({ ...confirmModal, isOpen: false });
                   if (confirmModal.onConfirm) confirmModal.onConfirm();
                 }}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl transition-colors text-xs"
+                disabled={confirmModal.isLoading}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl transition-colors text-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Confirm
+                {confirmModal.isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : "Confirm"}
               </button>
             </div>
           </div>
