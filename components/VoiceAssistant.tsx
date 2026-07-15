@@ -47,13 +47,7 @@ export default function VoiceAssistant({ userId, userName }: VoiceAssistantProps
         setIsActive(true);
         setIsChatOpen(true);
         setUiError(null);
-        setMessages([
-          {
-            text: `Welcome to Amanora Resort, ${userName || "Guest"}! 🌊 Speak or type to ask anything about your stay.`,
-            date: Date.now().toString(),
-            sender: "ai",
-          },
-        ]);
+        setMessages([]);
       });
 
       vapiInstance.on("call-end", () => {
